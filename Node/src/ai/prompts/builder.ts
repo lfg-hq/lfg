@@ -118,6 +118,12 @@ POST ${callbackBaseUrl}/api/v1/cli/request-input/
 Body: { "ticket_id": "${ticket.id}", "question": "...", "options": ["yes", "no"] }
 Response: { "answer": "..." }
 
+### 5. Create tasks to track your work
+POST ${callbackBaseUrl}/api/v1/cli/tasks/create/
+Body: { "ticket_id": "${ticket.id}", "tasks": [{ "description": "...", "status": "pending" }] }
+Response: { "created": [{ "id": "...", "description": "..." }] }
+Use the returned task IDs with the /tasks/bulk/ endpoint to update their status as you progress.
+
 ---
 
 ## ENVIRONMENT

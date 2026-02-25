@@ -114,9 +114,8 @@ claudeAuthApi.post("/start", async (c) => {
       if (loaded) {
         const status = await checkAuthStatus(wsName);
         if (status.authenticated) {
-          await db.update(profiles)
-            .set({ claudeCodeAuthenticated: true, updatedAt: new Date() })
-            .where(eq(profiles.userId, user.id));
+          // Re-save credentials from VM — the CLI may have refreshed the access token
+          await saveCredentialsToDB(wsName, user.id);
           return c.json({ status: "already_authenticated", message: "Claude Code is already authenticated" });
         }
       }

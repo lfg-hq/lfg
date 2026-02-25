@@ -2,10 +2,11 @@ import { Hono } from "hono";
 import { requireAuth } from "../../auth/middleware.ts";
 import { db } from "../../config/db.ts";
 import { projects } from "../../db/schema/projects.ts";
-import { ticketStages, projectTickets, ticketLogs, projectTodoLists } from "../../db/schema/tickets.ts";
+import { ticketStages, projectTickets, ticketLogs, projectTodoLists, ticketMergeHistory } from "../../db/schema/tickets.ts";
+import { githubTokens } from "../../db/schema/users.ts";
 import { sandboxes } from "../../db/schema/sandbox.ts";
 import { conversations } from "../../db/schema/chat.ts";
-import { eq, and, asc, desc } from "drizzle-orm";
+import { eq, and, asc, desc, max } from "drizzle-orm";
 import type { auth } from "../../auth/index.ts";
 
 type AuthEnv = {
@@ -303,6 +304,128 @@ ticketsApi.get("/:projectId/tickets/:ticketId/tasks", async (c) => {
   return c.json(tasks);
 });
 
+// ── POST /:projectId/tickets/:ticketId/tasks ────────────────────────
+// Create task(s) for a ticket
+
+ticketsApi.post("/:projectId/tickets/:ticketId/tasks", async (c) => {
+  const user = c.get("user");
+  const { projectId, ticketId } = c.req.param();
+
+  const project = await resolveProject(projectId, user.id);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  const [ticket] = await db
+    .select({ id: projectTickets.id })
+    .from(projectTickets)
+    .where(and(eq(projectTickets.id, ticketId), eq(projectTickets.projectId, project.id)));
+
+  if (!ticket) return c.json({ error: "Ticket not found" }, 404);
+
+  const body = await c.req.json<{
+    tasks: Array<{ description: string; order?: number }>;
+  }>();
+
+  if (!Array.isArray(body.tasks) || body.tasks.length === 0) {
+    return c.json({ error: "tasks array is required" }, 400);
+  }
+
+  // Get max existing order
+  const [maxRow] = await db
+    .select({ maxOrder: max(projectTodoLists.order) })
+    .from(projectTodoLists)
+    .where(eq(projectTodoLists.ticketId, ticketId));
+
+  let nextOrder = (maxRow?.maxOrder ?? -1) + 1;
+
+  const created = [];
+  for (const task of body.tasks) {
+    if (!task.description?.trim()) continue;
+    const order = task.order ?? nextOrder++;
+    const [row] = await db
+      .insert(projectTodoLists)
+      .values({
+        ticketId,
+        description: task.description.trim(),
+        status: "pending",
+        order,
+      })
+      .returning();
+    if (row) created.push({ id: row.id, description: row.description, status: row.status, order: row.order });
+  }
+
+  // Emit event
+  const { emit } = await import("../../events/bus.ts");
+  emit({ type: "ticket.tasks_updated", ticketId, taskIds: created.map((t) => t.id) });
+
+  return c.json({ created }, 201);
+});
+
+// ── PATCH /:projectId/tickets/:ticketId/tasks/:taskId ───────────────
+
+ticketsApi.patch("/:projectId/tickets/:ticketId/tasks/:taskId", async (c) => {
+  const user = c.get("user");
+  const { projectId, ticketId, taskId } = c.req.param();
+
+  const project = await resolveProject(projectId, user.id);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  // Verify ticket belongs to project
+  const [ticket] = await db
+    .select({ id: projectTickets.id })
+    .from(projectTickets)
+    .where(and(eq(projectTickets.id, ticketId), eq(projectTickets.projectId, project.id)));
+
+  if (!ticket) return c.json({ error: "Ticket not found" }, 404);
+
+  const [existing] = await db
+    .select({ id: projectTodoLists.id })
+    .from(projectTodoLists)
+    .where(and(eq(projectTodoLists.id, taskId), eq(projectTodoLists.ticketId, ticketId)));
+
+  if (!existing) return c.json({ error: "Task not found" }, 404);
+
+  const body = await c.req.json<Partial<{ description: string; status: string; order: number }>>();
+  const updateData: Record<string, unknown> = { updatedAt: new Date() };
+  if (body.description !== undefined) updateData.description = body.description;
+  if (body.status !== undefined) updateData.status = body.status;
+  if (body.order !== undefined) updateData.order = body.order;
+
+  const [updated] = await db
+    .update(projectTodoLists)
+    .set(updateData)
+    .where(eq(projectTodoLists.id, taskId))
+    .returning();
+
+  return c.json({ task: updated });
+});
+
+// ── DELETE /:projectId/tickets/:ticketId/tasks/:taskId ──────────────
+
+ticketsApi.delete("/:projectId/tickets/:ticketId/tasks/:taskId", async (c) => {
+  const user = c.get("user");
+  const { projectId, ticketId, taskId } = c.req.param();
+
+  const project = await resolveProject(projectId, user.id);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  const [ticket] = await db
+    .select({ id: projectTickets.id })
+    .from(projectTickets)
+    .where(and(eq(projectTickets.id, ticketId), eq(projectTickets.projectId, project.id)));
+
+  if (!ticket) return c.json({ error: "Ticket not found" }, 404);
+
+  const [existing] = await db
+    .select({ id: projectTodoLists.id })
+    .from(projectTodoLists)
+    .where(and(eq(projectTodoLists.id, taskId), eq(projectTodoLists.ticketId, ticketId)));
+
+  if (!existing) return c.json({ error: "Task not found" }, 404);
+
+  await db.delete(projectTodoLists).where(eq(projectTodoLists.id, taskId));
+  return c.json({ success: true });
+});
+
 // ── POST /:projectId/tickets/:ticketId/chat ─────────────────────────
 // User sends a chat message to the ticket agent
 
@@ -426,5 +549,245 @@ ticketsApi.post("/:projectId/tickets/:ticketId/preview", async (c) => {
     return c.json({ error: String(err) }, 500);
   }
 });
+
+// ── POST /:projectId/tickets/:ticketId/git/create-pr ────────────────
+// Create a GitHub PR for the ticket's feature branch
+
+ticketsApi.post("/:projectId/tickets/:ticketId/git/create-pr", async (c) => {
+  const user = c.get("user");
+  const { projectId, ticketId } = c.req.param();
+
+  const project = await resolveProject(projectId, user.id);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  const [ticket] = await db
+    .select()
+    .from(projectTickets)
+    .where(and(eq(projectTickets.id, ticketId), eq(projectTickets.projectId, project.id)));
+
+  if (!ticket) return c.json({ error: "Ticket not found" }, 404);
+  if (!ticket.githubBranch) return c.json({ error: "No branch found for this ticket" }, 400);
+
+  // Get GitHub token
+  const [ghToken] = await db
+    .select()
+    .from(githubTokens)
+    .where(eq(githubTokens.userId, user.id))
+    .limit(1);
+
+  if (!ghToken?.accessToken) return c.json({ error: "GitHub not connected" }, 400);
+
+  // Extract owner/repo from project stack
+  const repoUrl = getProjectRepo(project);
+  if (!repoUrl) return c.json({ error: "No GitHub repo configured for this project" }, 400);
+
+  const [, repoOwner, repoName] = repoUrl;
+
+  const { createPullRequest } = await import("../../services/git.ts");
+
+  try {
+    const { prNumber, prUrl } = await createPullRequest({
+      repoOwner: repoOwner!,
+      repoName: repoName!,
+      featureBranch: ticket.githubBranch,
+      targetBranch: "lfg-agent",
+      title: `feat: ${ticket.name}`,
+      body: `Automated PR for ticket: ${ticket.name}`,
+      githubToken: ghToken.accessToken,
+    });
+
+    await db
+      .update(projectTickets)
+      .set({
+        githubPrUrl: prUrl,
+        githubPrNumber: prNumber,
+        githubMergeStatus: "pr_open",
+        updatedAt: new Date(),
+      })
+      .where(eq(projectTickets.id, ticketId));
+
+    return c.json({ prNumber, prUrl });
+  } catch (err) {
+    return c.json({ error: `PR creation failed: ${err}` }, 500);
+  }
+});
+
+// ── POST /:projectId/tickets/:ticketId/git/merge ────────────────────
+// Merge the ticket's open PR
+
+ticketsApi.post("/:projectId/tickets/:ticketId/git/merge", async (c) => {
+  const user = c.get("user");
+  const { projectId, ticketId } = c.req.param();
+
+  const project = await resolveProject(projectId, user.id);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  const [ticket] = await db
+    .select()
+    .from(projectTickets)
+    .where(and(eq(projectTickets.id, ticketId), eq(projectTickets.projectId, project.id)));
+
+  if (!ticket) return c.json({ error: "Ticket not found" }, 404);
+  if (!ticket.githubPrNumber) return c.json({ error: "No PR found for this ticket" }, 400);
+
+  // Get GitHub token
+  const [ghToken] = await db
+    .select()
+    .from(githubTokens)
+    .where(eq(githubTokens.userId, user.id))
+    .limit(1);
+
+  if (!ghToken?.accessToken) return c.json({ error: "GitHub not connected" }, 400);
+
+  // Extract owner/repo
+  const repoUrl = getProjectRepo(project);
+  if (!repoUrl) return c.json({ error: "No GitHub repo configured" }, 400);
+
+  const [, repoOwner, repoName] = repoUrl;
+
+  const { mergePullRequest } = await import("../../services/git.ts");
+
+  try {
+    const { mergeCommitSha } = await mergePullRequest({
+      repoOwner: repoOwner!,
+      repoName: repoName!,
+      prNumber: ticket.githubPrNumber,
+      githubToken: ghToken.accessToken,
+    });
+
+    await db
+      .update(projectTickets)
+      .set({
+        githubMergeStatus: "merged",
+        githubMergeCommitSha: mergeCommitSha,
+        updatedAt: new Date(),
+      })
+      .where(eq(projectTickets.id, ticketId));
+
+    // Record merge history
+    await db.insert(ticketMergeHistory).values({
+      ticketId,
+      action: "merged",
+      mergeCommitSha,
+      performedById: user.id,
+      commitMessage: `feat: ${ticket.name}`,
+    });
+
+    return c.json({ mergeCommitSha });
+  } catch (err) {
+    await db
+      .update(projectTickets)
+      .set({ githubMergeStatus: "failed", updatedAt: new Date() })
+      .where(eq(projectTickets.id, ticketId));
+
+    return c.json({ error: `Merge failed: ${err}` }, 500);
+  }
+});
+
+// ── POST /:projectId/tickets/:ticketId/git/push ─────────────────────
+// Manually commit + push the sandbox code to GitHub
+
+ticketsApi.post("/:projectId/tickets/:ticketId/git/push", async (c) => {
+  const user = c.get("user");
+  const { projectId, ticketId } = c.req.param();
+
+  const project = await resolveProject(projectId, user.id);
+  if (!project) return c.json({ error: "Project not found" }, 404);
+
+  const [ticket] = await db
+    .select()
+    .from(projectTickets)
+    .where(and(eq(projectTickets.id, ticketId), eq(projectTickets.projectId, project.id)));
+
+  if (!ticket) return c.json({ error: "Ticket not found" }, 404);
+
+  // Get GitHub token
+  const [ghToken] = await db
+    .select()
+    .from(githubTokens)
+    .where(eq(githubTokens.userId, user.id))
+    .limit(1);
+
+  if (!ghToken?.accessToken) return c.json({ error: "GitHub not connected. Connect GitHub in Settings." }, 400);
+
+  // Extract owner/repo
+  const repoUrl = getProjectRepo(project);
+  if (!repoUrl) return c.json({ error: "No GitHub repo configured for this project" }, 400);
+
+  const [, repoOwner, repoName] = repoUrl;
+
+  // Find sandbox
+  const [sandbox] = await db
+    .select()
+    .from(sandboxes)
+    .where(and(eq(sandboxes.ticketId, ticketId), eq(sandboxes.workspaceType, "ticket")))
+    .limit(1);
+
+  if (!sandbox?.magsWorkspaceId) {
+    return c.json({ error: "No active sandbox. Build the ticket first." }, 400);
+  }
+
+  const { commitAndPush, createPullRequest } = await import("../../services/git.ts");
+
+  const featureBranch = ticket.githubBranch ?? `feature/ticket-${ticketId}`;
+
+  try {
+    const { sha } = await commitAndPush({
+      workspaceId: sandbox.magsWorkspaceId,
+      projectDir: "/root/project",
+      commitMessage: `update: ${ticket.name}`,
+      featureBranch,
+      repoUrl: `https://github.com/${repoOwner}/${repoName}.git`,
+      githubToken: ghToken.accessToken,
+    });
+
+    await db
+      .update(projectTickets)
+      .set({
+        githubBranch: featureBranch,
+        githubCommitSha: sha,
+        updatedAt: new Date(),
+      })
+      .where(eq(projectTickets.id, ticketId));
+
+    // Merge feature branch → lfg-agent (direct push)
+    let mergeStatus = ticket.githubMergeStatus;
+    try {
+      const { mergeToLfgAgent } = await import("../../services/git.ts");
+      const { sha: mergeSha } = await mergeToLfgAgent({
+        workspaceId: sandbox.magsWorkspaceId,
+        projectDir: "/root/project",
+        featureBranch,
+        repoUrl: `https://github.com/${repoOwner}/${repoName}.git`,
+        githubToken: ghToken.accessToken,
+      });
+      mergeStatus = "merged";
+      await db
+        .update(projectTickets)
+        .set({ githubMergeStatus: "merged", updatedAt: new Date() })
+        .where(eq(projectTickets.id, ticketId));
+    } catch (mergeErr) {
+      console.warn(`[tickets] Merge to lfg-agent failed during push:`, mergeErr);
+    }
+
+    return c.json({ sha, branch: featureBranch, mergeStatus });
+  } catch (err) {
+    return c.json({ error: `Push failed: ${err}` }, 500);
+  }
+});
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Extract repo owner/name from project fields, falling back to parsing stack text.
+ * Returns a regex match array [full, owner, name] or null.
+ */
+function getProjectRepo(project: { repoOwner?: string | null; repoName?: string | null; repoUrl?: string | null; stack?: string | null }) {
+  if (project.repoOwner && project.repoName) {
+    return [`https://github.com/${project.repoOwner}/${project.repoName}`, project.repoOwner, project.repoName];
+  }
+  const url = project.repoUrl ?? project.stack ?? "";
+  return url.match(/https?:\/\/github\.com\/([^/]+)\/([^/.]+)/);
+}
 
 export default ticketsApi;

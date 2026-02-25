@@ -16,7 +16,6 @@
 // @ts-ignore — CJS module, no bundled types
 import MagsClient from "@magpiecloud/mags";
 
-const BASE_WORKSPACE_ID = process.env.MAGS_BASE_WORKSPACE_ID;
 
 export interface MagsExecResult {
   exitCode: number;
@@ -41,7 +40,6 @@ export async function newWorkspace(name: string): Promise<{
 }> {
   const client = getClient();
   const result = await client.new(name, {
-    ...(BASE_WORKSPACE_ID ? { baseWorkspaceId: BASE_WORKSPACE_ID } : {}),
     timeout: 120_000,
     pollInterval: 2000,
   });

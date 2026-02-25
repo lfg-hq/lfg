@@ -412,6 +412,20 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
 
     <!-- Tasks tab -->
     <div class="drawer-tab-content" id="tab-tasks">
+      <div style="padding:0.5rem 1rem 0;flex-shrink:0;display:flex;align-items:center;gap:0.5rem;">
+        <div id="task-add-form" style="display:none;flex:1;gap:0.5rem;align-items:center;">
+          <input id="task-add-input" type="text" placeholder="Task description…"
+            style="flex:1;padding:0.4rem 0.6rem;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:6px;color:rgba(255,255,255,0.9);font-size:0.8125rem;outline:none;"
+            onkeydown="if(event.key==='Enter')addNewTask();" />
+          <button onclick="addNewTask()" style="padding:0.35rem 0.7rem;background:rgba(124,58,237,0.2);color:#a78bfa;border:1px solid rgba(124,58,237,0.3);border-radius:6px;font-size:0.75rem;cursor:pointer;">Add</button>
+          <button onclick="hideTaskForm()" style="padding:0.35rem 0.5rem;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.4);border:1px solid rgba(255,255,255,0.1);border-radius:6px;font-size:0.75rem;cursor:pointer;">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <button id="task-add-btn" onclick="showTaskForm()" style="padding:0.35rem 0.7rem;background:rgba(124,58,237,0.15);color:#a78bfa;border:1px solid rgba(124,58,237,0.25);border-radius:6px;font-size:0.75rem;cursor:pointer;">
+          <i class="fas fa-plus"></i> Add Task
+        </button>
+      </div>
       <div id="tasks-list" style="flex:1;overflow-y:auto;padding:0.875rem 1rem;display:flex;flex-direction:column;gap:0.5rem;">
         <div class="placeholder-pane"><i class="fas fa-list-check"></i><p>No tasks yet</p></div>
       </div>
@@ -489,7 +503,6 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
   const ticketMap = Object.fromEntries(TICKET_DATA.map(t => [t.id, t]));
 
   function openTicketDrawer(ticketId) {
-    stopLogPolling();
     _lastLogCount = 0;
     _lastLogContent = '';
     _logsFirstLoad = true;
@@ -524,10 +537,11 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
     // Fetch LIVE ticket status to detect executing tickets (ticketMap is stale)
     fetch('/api/projects/' + PROJECT_ID + '/tickets/' + ticketId)
       .then(function(r) { return r.json(); })
-      .then(function(live) {
+      .then(function(resp) {
+        var live = resp && resp.ticket ? resp.ticket : resp;
         var qs = live.queueStatus || live.queue_status || '';
         var st = live.status || t.status;
-        var isActive = qs === 'queued' || qs === 'executing' || st === 'in_progress';
+        var isActive = qs === 'queued' || qs === 'executing';
         var buildBtn = document.getElementById('drawer-build-btn');
         buildBtn.disabled = isActive;
         buildBtn.innerHTML = isActive
@@ -545,7 +559,6 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
   }
 
   function closeTicketDrawer() {
-    stopLogPolling();
     document.getElementById('ticket-drawer').classList.remove('active');
     sessionStorage.removeItem('lfg_drawer_ticket_' + PROJECT_ID);
     _currentTicketId = null;
@@ -566,10 +579,7 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
       _lastLogContent = '';
       _logsFirstLoad = true;
       loadExecutionLogs();
-      // Always start polling — the interval self-stops when ticket is idle
-      startLogPolling();
-    } else {
-      stopLogPolling();
+      // Logs come via WebSocket (ticket_log events) — no polling needed
     }
     if (tabId === 'tasks')   loadTasks();
     if (tabId === 'git')     loadGitInfo();
@@ -597,7 +607,6 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
       btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Building…';
       // Switch to Actions tab so user sees logs immediately
       switchDrawerTab('actions', document.querySelector('.drawer-tab[data-tab="actions"]'));
-      startLogPolling();
     } catch(e) {
       btn.disabled = false;
       btn.innerHTML = '<i class="fas fa-bolt"></i> Build Ticket';
@@ -606,41 +615,25 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
   }
 
   // ── Actions tab: execution logs + agent chat ─────────────────────
-  let _logPollTimer = null;
   let _lastLogCount = 0;
   let _lastLogContent = '';
 
-  function startLogPolling() {
-    stopLogPolling();
-    console.log('[logs] polling started for ticket', _currentTicketId);
-    _logPollTimer = setInterval(async () => {
-      await loadExecutionLogs();
-      // Check if ticket is done — stop polling and refresh button state
-      if (!_currentTicketId) { stopLogPolling(); return; }
-      try {
-        const t = await fetch('/api/projects/' + PROJECT_ID + '/tickets/' + _currentTicketId)
-          .then(r => r.json());
-        // Handle both camelCase and snake_case API responses
-        const qs = t.queueStatus || t.queue_status || '';
-        const st = t.status || '';
-        const active = qs === 'queued' || qs === 'executing' || st === 'in_progress';
-        if (!active) {
-          stopLogPolling();
-          const btn = document.getElementById('drawer-build-btn');
-          if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-bolt"></i> Build Ticket'; }
-          // Refresh kanban card status badge
-          const card = document.querySelector('.kanban-card[data-ticket-id="' + _currentTicketId + '"]');
-          if (card) {
-            const badge = card.querySelector('.kanban-status');
-            if (badge) { badge.textContent = st.replace(/_/g, ' '); badge.className = 'kanban-status status-' + st; }
-          }
-        }
-      } catch(e) {}
-    }, 3000);
-  }
-
-  function stopLogPolling() {
-    if (_logPollTimer) { clearInterval(_logPollTimer); _logPollTimer = null; }
+  /** Called by WS when ticket status changes (build done/failed). */
+  function handleTicketStatus(msg) {
+    if (msg.ticketId !== _currentTicketId) return;
+    const qs = msg.queueStatus || '';
+    const st = msg.status || '';
+    if (qs !== 'queued' && qs !== 'executing') {
+      hideThinkingIndicator();
+      const btn = document.getElementById('drawer-build-btn');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-bolt"></i> Build Ticket'; }
+      // Refresh kanban card status badge
+      const card = document.querySelector('.kanban-card[data-ticket-id="' + _currentTicketId + '"]');
+      if (card) {
+        const badge = card.querySelector('.kanban-status');
+        if (badge) { badge.textContent = st.replace(/_/g, ' '); badge.className = 'kanban-status status-' + st; }
+      }
+    }
   }
 
   function fmtLogTime(ts) {
@@ -711,6 +704,16 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
         '</div>' +
         '<div class="log-user-content">' + escHtml(msg) + '</div>';
 
+    } else if (type === 'cli_error') {
+      // CLI Error — red left border, error icon
+      el.className += ' log-error';
+      el.innerHTML =
+        '<div class="log-error-header">' +
+          '<span class="log-error-label"><i class="fas fa-exclamation-triangle"></i> CLI Error</span>' +
+          '<span class="log-time">' + ts + '</span>' +
+        '</div>' +
+        '<div class="log-error-content">' + escHtml(msg) + '</div>';
+
     } else {
       // Command / system — show description, expand for details (like Django)
       el.className += ' log-cmd';
@@ -737,6 +740,7 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
   }
 
   var _logsFirstLoad = true;
+  var _agentThinking = false;
   async function loadExecutionLogs() {
     if (!_currentTicketId) return;
     try {
@@ -767,9 +771,20 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
         area.appendChild(renderLogEntry(row, idx));
       });
 
+      // Re-add thinking indicator if agent is still processing
+      if (_agentThinking && !document.getElementById('agent-thinking')) {
+        var thinkEl = document.createElement('div');
+        thinkEl.id = 'agent-thinking';
+        thinkEl.className = 'log-entry log-agent';
+        thinkEl.innerHTML = '<div class="log-agent-header">' +
+          '<span class="log-agent-label">AGENT</span>' +
+          '<span class="agent-thinking-dots">Thinking...</span>' +
+          '</div>';
+        area.appendChild(thinkEl);
+      }
+
       if (shouldScroll) {
         requestAnimationFrame(function() {
-          // .drawer-body is the actual scroll container
           var scrollParent = area.closest('.drawer-body') || area;
           scrollParent.scrollTop = scrollParent.scrollHeight;
         });
@@ -781,7 +796,8 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
   async function updateActionsBanner() {
     if (!_currentTicketId) return;
     try {
-      var ticket = await fetch('/api/projects/' + PROJECT_ID + '/tickets/' + _currentTicketId).then(function(r) { return r.json(); });
+      var resp = await fetch('/api/projects/' + PROJECT_ID + '/tickets/' + _currentTicketId).then(function(r) { return r.json(); });
+      var ticket = resp && resp.ticket ? resp.ticket : resp;
       var branch = ticket.github_branch || ticket.githubBranch;
       var sha = ticket.github_commit_sha || ticket.githubCommitSha;
       var banner = document.getElementById('actions-git-banner');
@@ -798,8 +814,13 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
     return String(s).replace(/[&<>"]/g, function(c) { return m[c] || c; });
   }
 
+  var _thinkingTimeout = null;
   function showThinkingIndicator() {
-    hideThinkingIndicator();
+    _agentThinking = true;
+    if (_thinkingTimeout) clearTimeout(_thinkingTimeout);
+    // Safety: auto-hide after 2 minutes
+    _thinkingTimeout = setTimeout(function() { hideThinkingIndicator(); }, 120000);
+    if (document.getElementById('agent-thinking')) return;
     var area = document.getElementById('actions-log-area');
     if (!area) return;
     var el = document.createElement('div');
@@ -807,7 +828,7 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
     el.className = 'log-entry log-agent';
     el.innerHTML = '<div class="log-agent-header">' +
       '<span class="log-agent-label">AGENT</span>' +
-      '<span class="agent-thinking-dots">Thinking<span class="dot-anim">...</span></span>' +
+      '<span class="agent-thinking-dots">Thinking...</span>' +
       '</div>';
     area.appendChild(el);
     var scrollParent = area.closest('.drawer-body') || area;
@@ -815,6 +836,8 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
   }
 
   function hideThinkingIndicator() {
+    _agentThinking = false;
+    if (_thinkingTimeout) { clearTimeout(_thinkingTimeout); _thinkingTimeout = null; }
     var el = document.getElementById('agent-thinking');
     if (el) el.remove();
   }
@@ -839,11 +862,43 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
       }
       _lastLogCount = 0; _lastLogContent = ''; _logsFirstLoad = true;
       setTimeout(loadExecutionLogs, 800);
-      startLogPolling();
     } catch(e) { console.error('sendTicketChatMsg', e); hideThinkingIndicator(); }
   }
 
   // ── Tasks tab ────────────────────────────────────────────────────
+  function showTaskForm() {
+    document.getElementById('task-add-form').style.display = 'flex';
+    document.getElementById('task-add-btn').style.display = 'none';
+    document.getElementById('task-add-input').focus();
+  }
+  function hideTaskForm() {
+    document.getElementById('task-add-form').style.display = 'none';
+    document.getElementById('task-add-btn').style.display = '';
+    document.getElementById('task-add-input').value = '';
+  }
+  async function addNewTask() {
+    var input = document.getElementById('task-add-input');
+    var desc = input.value.trim();
+    if (!desc || !_currentTicketId) return;
+    input.value = '';
+    try {
+      await fetch('/api/projects/' + PROJECT_ID + '/tickets/' + _currentTicketId + '/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tasks: [{ description: desc }] })
+      });
+      loadTasks();
+    } catch(e) { console.error('addNewTask', e); }
+  }
+  async function deleteTask(taskId) {
+    if (!_currentTicketId) return;
+    try {
+      await fetch('/api/projects/' + PROJECT_ID + '/tickets/' + _currentTicketId + '/tasks/' + taskId, {
+        method: 'DELETE'
+      });
+      loadTasks();
+    } catch(e) { console.error('deleteTask', e); }
+  }
   async function loadTasks() {
     if (!_currentTicketId) return;
     try {
@@ -860,11 +915,17 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
       list.innerHTML = tasks.map(t => {
         const icon = statusIcon[t.status] || '○';
         const color = statusColor[t.status] || 'rgba(255,255,255,0.3)';
-        return '<div style="display:flex;gap:0.625rem;align-items:flex-start;padding:0.5rem 0.625rem;border-radius:7px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);">'
-          + '<span style="color:' + color + ';font-size:1rem;margin-top:1px;flex-shrink:0;">' + icon + '</span>'
-          + '<span style="font-size:0.8375rem;color:rgba(255,255,255,0.8);line-height:1.5;">' + (t.description || '') + '</span>'
+        return '<div style="display:flex;gap:0.625rem;align-items:center;padding:0.5rem 0.625rem;border-radius:7px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);">'
+          + '<span style="color:' + color + ';font-size:1rem;flex-shrink:0;">' + icon + '</span>'
+          + '<span style="flex:1;font-size:0.8375rem;color:rgba(255,255,255,0.8);line-height:1.5;">' + escHtml(t.description || '') + '</span>'
+          + '<button data-delete-task="' + t.id + '" style="flex-shrink:0;background:none;border:none;color:rgba(255,255,255,0.2);cursor:pointer;padding:0.2rem;font-size:0.7rem;" title="Delete task">'
+          + '<i class="fas fa-times"></i></button>'
           + '</div>';
       }).join('');
+      // Event delegation for delete buttons
+      list.querySelectorAll('[data-delete-task]').forEach(function(btn) {
+        btn.onclick = function() { deleteTask(btn.getAttribute('data-delete-task')); };
+      });
     } catch(e) { console.error('loadTasks', e); }
   }
 
@@ -922,37 +983,86 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
   }
 
   // ── Git tab ──────────────────────────────────────────────────────
+  var _gitStatusColors = { pending:'#6b7280', pr_open:'#3b82f6', merged:'#34d399', failed:'#f87171' };
+
   async function loadGitInfo() {
     if (!_currentTicketId) return;
-    const t = ticketMap[_currentTicketId];
     const info = document.getElementById('git-info');
-    if (!t || !info) return;
+    if (!info) return;
 
-    // We show ticket git fields from inline data (no extra fetch needed)
-    const ticket = await fetch('/api/projects/' + PROJECT_ID + '/tickets/' + _currentTicketId)
+    const resp = await fetch('/api/projects/' + PROJECT_ID + '/tickets/' + _currentTicketId)
       .then(r => r.json()).catch(() => null);
-    if (!ticket) return;
+    if (!resp || !resp.ticket) return;
+    const ticket = resp.ticket;
 
-    const branch = ticket.github_branch || ticket.githubBranch || '—';
-    const sha = ticket.github_commit_sha || ticket.githubCommitSha;
-    const shortSha = sha ? sha.slice(0,7) : '—';
-    const mergeStatus = ticket.github_merge_status || ticket.githubMergeStatus || '—';
+    const branch = ticket.githubBranch || ticket.github_branch || '';
+    const sha = ticket.githubCommitSha || ticket.github_commit_sha || '';
+    const shortSha = sha ? sha.slice(0, 7) : '';
+    const mergeStatus = ticket.githubMergeStatus || ticket.github_merge_status || '';
+    const prUrl = ticket.githubPrUrl || '';
+    const rawPrNum = ticket.githubPrNumber;
+    const prNumber = (typeof rawPrNum === 'number' && rawPrNum > 0) ? rawPrNum : null;
+    const statusColor = _gitStatusColors[mergeStatus] || '#6b7280';
+    const statusLabel = mergeStatus ? mergeStatus.replace(/_/g, ' ') : 'none';
 
-    info.innerHTML = '<div style="display:flex;flex-direction:column;gap:0.875rem;font-size:0.8375rem;">'
-      + '<div style="display:flex;flex-direction:column;gap:0.25rem;">'
+    var html = '<div style="display:flex;flex-direction:column;gap:1rem;font-size:0.8375rem;">';
+
+    // Branch
+    html += '<div style="display:flex;flex-direction:column;gap:0.25rem;">'
       + '<span style="color:rgba(255,255,255,0.4);font-size:0.75rem;text-transform:uppercase;letter-spacing:.05em;">Branch</span>'
-      + '<code style="color:#c4b5fd;background:rgba(139,92,246,0.1);padding:.2rem .5rem;border-radius:5px;">' + branch + '</code>'
-      + '</div>'
-      + '<div style="display:flex;flex-direction:column;gap:0.25rem;">'
-      + '<span style="color:rgba(255,255,255,0.4);font-size:0.75rem;text-transform:uppercase;letter-spacing:.05em;">Last Commit</span>'
-      + '<code style="color:#94a3b8;">' + shortSha + '</code>'
-      + '</div>'
-      + '<div style="display:flex;flex-direction:column;gap:0.25rem;">'
-      + '<span style="color:rgba(255,255,255,0.4);font-size:0.75rem;text-transform:uppercase;letter-spacing:.05em;">Merge Status</span>'
-      + '<span style="color:rgba(255,255,255,0.7);">' + mergeStatus + '</span>'
-      + '</div>'
+      + (branch
+        ? '<code style="color:#c4b5fd;background:rgba(139,92,246,0.1);padding:.25rem .5rem;border-radius:5px;display:inline-block;">' + escHtml(branch) + '</code>'
+        : '<span style="color:rgba(255,255,255,0.3);">No branch yet</span>')
       + '</div>';
+
+    // Last Commit
+    html += '<div style="display:flex;flex-direction:column;gap:0.25rem;">'
+      + '<span style="color:rgba(255,255,255,0.4);font-size:0.75rem;text-transform:uppercase;letter-spacing:.05em;">Last Commit</span>'
+      + '<code style="color:#94a3b8;">' + (shortSha || '—') + '</code>'
+      + '</div>';
+
+    // PR
+    html += '<div style="display:flex;flex-direction:column;gap:0.25rem;">'
+      + '<span style="color:rgba(255,255,255,0.4);font-size:0.75rem;text-transform:uppercase;letter-spacing:.05em;">Pull Request</span>';
+    // Merge Status badge
+    html += '<div style="display:flex;flex-direction:column;gap:0.25rem;">'
+      + '<span style="color:rgba(255,255,255,0.4);font-size:0.75rem;text-transform:uppercase;letter-spacing:.05em;">Merge Status</span>'
+      + '<span style="display:inline-flex;align-items:center;gap:0.4rem;">'
+      + '<span style="width:8px;height:8px;border-radius:50%;background:' + statusColor + ';display:inline-block;"></span>'
+      + '<span style="color:rgba(255,255,255,0.7);text-transform:capitalize;">' + statusLabel + '</span>'
+      + '</span>'
+      + '</div>';
+
+    // Actions — Push commits feature branch and merges to lfg-agent automatically
+    html += '<div style="display:flex;gap:0.5rem;margin-top:0.25rem;flex-wrap:wrap;">';
+    html += '<button onclick="pushToGithub()" id="git-push-btn" style="padding:0.4rem 0.8rem;background:rgba(139,92,246,0.15);color:#a78bfa;border:1px solid rgba(139,92,246,0.3);border-radius:6px;font-size:0.775rem;cursor:pointer;">'
+      + '<i class="fas fa-cloud-upload-alt"></i> Push & Merge to lfg-agent</button>';
+    html += '</div>';
+
+    html += '</div>';
+    info.innerHTML = html;
   }
+
+  async function pushToGithub() {
+    if (!_currentTicketId) return;
+    var btn = document.getElementById('git-push-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Pushing…'; }
+    try {
+      var res = await fetch('/api/projects/' + PROJECT_ID + '/tickets/' + _currentTicketId + '/git/push', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }
+      });
+      var data = await res.json();
+      if (!res.ok) { alert(data.error || 'Failed to push'); }
+      else {
+        var msg = 'Pushed ' + (data.sha || '').slice(0, 7) + ' to ' + (data.branch || '');
+        if (data.mergeStatus === 'merged') msg += ' and merged to lfg-agent';
+        alert(msg);
+      }
+      loadGitInfo();
+    } catch(e) { alert('Failed: ' + e.message); }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Push & Merge to lfg-agent'; }
+  }
+
 
   // ── Server logs tab ──────────────────────────────────────────────
   async function refreshServerLogs() {
@@ -1071,6 +1181,8 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
           if (msg.type === 'ticket_log' && msg.ticketId === _currentTicketId) {
             console.log('[ws] live log:', msg.log.type, msg.log.message?.slice(0, 80));
             appendLiveLog(msg.log);
+          } else if (msg.type === 'ticket_status') {
+            handleTicketStatus(msg);
           }
         } catch(e) {}
       };

@@ -1,4 +1,5 @@
 import { html } from "hono/html";
+import { ChatInput } from "../components/chat-input.tsx";
 
 interface ChatPageProps {
   user: { id: string; name: string; email: string };
@@ -19,12 +20,6 @@ export function ChatPage({
   roleKey = "product_analyst",
   models = [],
 }: ChatPageProps) {
-  const groupedModels: Record<string, typeof models> = {};
-  for (const m of models) {
-    if (!groupedModels[m.providerLabel]) groupedModels[m.providerLabel] = [];
-    (groupedModels[m.providerLabel] as typeof models).push(m);
-  }
-
   return html`<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -99,6 +94,10 @@ export function ChatPage({
             <i class="fas fa-tasks"></i>
             <span class="nav-text">Tickets</span>
           </a>
+          <a href="/instant/project/${projectId}" class="nav-link">
+            <i class="fas fa-bolt"></i>
+            <span class="nav-text">Instant</span>
+          </a>
         </div>
         <div class="conversations-section">
           <h3 class="sidebar-section-title">Recents</h3>
@@ -165,85 +164,16 @@ export function ChatPage({
       </div>
 
       <!-- Input Area -->
-      <div class="chat-input-container">
-        <form id="chat-form">
-          <div class="input-wrapper">
-            <div class="left-actions">
-              <button type="button" id="file-upload-btn" class="action-btn" title="Upload file">
-                <i class="fas fa-paperclip"></i>
-              </button>
-              <input type="file" id="file-upload-input" style="display:none" multiple
-                accept="image/*,.pdf,.csv,.txt,.md,.docx,.xlsx,.mp3,.mp4,.m4a,.wav,.webm" />
-
-              <button type="button" id="settings-btn" class="action-btn settings-btn-styled" title="Settings">
-                <i class="fas fa-sliders-h"></i>
-              </button>
-
-              <span class="status-indicators">
-                <span class="status-item role-status" id="role-status-btn">
-                  <span id="current-role-left">Analyst</span>
-                </span>
-                <span class="status-divider">•</span>
-                <span class="status-item model-status" id="model-status-btn">
-                  <span id="current-model-left">Loading...</span>
-                </span>
-              </span>
-
-              <!-- Settings Dropdown -->
-              <div class="settings-dropdown" id="settings-dropdown">
-                <div class="settings-menu">
-                  <div class="menu-item" data-submenu="role">
-                    <i class="fas fa-user-tie"></i><span>Role</span>
-                    <i class="fas fa-chevron-right submenu-arrow"></i>
-                    <div class="submenu" id="role-submenu">
-                      <button type="button" class="submenu-option selected" data-value="product_analyst">
-                        <span>Analyst</span><i class="fas fa-check"></i>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div class="menu-item" data-submenu="model">
-                    <i class="fas fa-robot"></i><span>Model</span>
-                    <i class="fas fa-chevron-right submenu-arrow"></i>
-                    <div class="submenu" id="model-submenu">
-                      ${Object.entries(groupedModels).map(([label, ms]) => `
-                        <div class="submenu-group">${label}</div>
-                        ${ms.map((m) => `
-                          <button type="button"
-                            class="submenu-option${m.key === modelKey ? " selected" : ""}"
-                            data-value="${m.key}">
-                            <span>${m.key}</span>
-                            <i class="fas fa-check"></i>
-                          </button>`).join("")}
-                      `).join("")}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div id="chat-input-box">
-              <textarea id="chat-input" placeholder="Type your message here..." rows="2" autofocus></textarea>
-            </div>
-
-            <div class="input-actions">
-              <div class="turbo-switch-container" title="Turbo mode">
-                <label class="turbo-switch">
-                  <input type="checkbox" id="turbo-mode-toggle" />
-                  <span class="turbo-slider"></span>
-                </label>
-                <span class="turbo-label">Turbo</span>
-              </div>
-              <button type="button" id="record-audio-btn" class="action-btn" title="Record audio">
-                <i class="fas fa-microphone"></i>
-              </button>
-              <button type="submit" id="send-btn" class="action-btn" title="Send">
-                <i class="fas fa-paper-plane"></i>
-              </button>
-            </div>
-          </div>
-        </form>
-      </div>
+      ${ChatInput({
+        placeholder: "Type your message here...",
+        models,
+        selectedModelKey: modelKey,
+        selectedRoleKey: roleKey,
+        roleOptions: [{ key: "product_analyst", label: "Analyst" }],
+        showTurboToggle: true,
+        turboEnabled: false,
+        showMic: true,
+      })}
     </div>
   </div>
 
@@ -368,24 +298,6 @@ export function ChatPage({
     if (selectedModelBtn) {
       document.getElementById('current-model-left').textContent = selectedModelBtn.querySelector('span').textContent.trim();
     }
-
-    // File upload: wire up button → input
-    document.getElementById('file-upload-btn').addEventListener('click', () => {
-      document.getElementById('file-upload-input').click();
-    });
-    document.getElementById('file-upload-input').addEventListener('change', async (e) => {
-      const input = e.target;
-      for (const file of input.files) {
-        const fd = new FormData();
-        fd.append('file', file);
-        if (window.currentConversationId) fd.append('conversation_id', window.currentConversationId);
-        const res = await fetch('/api/files/upload', { method: 'POST', body: fd, credentials: 'include' });
-        const data = await res.json();
-        console.log('Uploaded:', data);
-        // TODO: attach to next message (Phase 6 follow-up)
-      }
-      input.value = '';
-    });
 
     // Artifacts panel toggle is handled by artifacts.js (uses #artifacts-toggle and #resize-handle)
     requestAnimationFrame(()=>requestAnimationFrame(()=>document.documentElement.classList.remove('sidebar-minimized-preload')));

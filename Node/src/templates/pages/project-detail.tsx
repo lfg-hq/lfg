@@ -186,6 +186,9 @@ export function ProjectDetailPage({
         <a href="/projects/${project.projectId}/tickets" class="tab-item" style="display:flex;align-items:center;gap:0.5rem;padding:0.875rem 1.25rem;text-decoration:none;font-size:0.875rem;font-weight:500;color:var(--text-secondary);border-bottom:2px solid transparent;margin-bottom:-1px;transition:color 0.15s;">
           <i class="fas fa-tasks"></i> Tickets
         </a>
+        <a href="/instant/project/${project.projectId}" class="tab-item" style="display:flex;align-items:center;gap:0.5rem;padding:0.875rem 1.25rem;text-decoration:none;font-size:0.875rem;font-weight:500;color:var(--text-secondary);border-bottom:2px solid transparent;margin-bottom:-1px;transition:color 0.15s;">
+          <i class="fas fa-bolt"></i> Instant
+        </a>
         <a href="/projects/${project.projectId}?tab=environment" class="tab-item${activeTab === "environment" ? " active" : ""}" style="display:flex;align-items:center;gap:0.5rem;padding:0.875rem 1.25rem;text-decoration:none;font-size:0.875rem;font-weight:500;color:${activeTab === "environment" ? "var(--text-color)" : "var(--text-secondary)"};border-bottom:2px solid ${activeTab === "environment" ? "var(--primary-color)" : "transparent"};margin-bottom:-1px;transition:color 0.15s;">
           <i class="fas fa-key"></i> Environment
         </a>

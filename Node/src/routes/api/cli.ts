@@ -15,9 +15,12 @@ import { Hono } from "hono";
 import { db } from "../../config/db.ts";
 import { projectTickets, projectTodoLists, ticketLogs } from "../../db/schema/tickets.ts";
 import { sandboxes } from "../../db/schema/sandbox.ts";
+import { projects } from "../../db/schema/projects.ts";
 import { profiles } from "../../db/schema/users.ts";
 import { eq, and } from "drizzle-orm";
 import { emit } from "../../events/bus.ts";
+import { parseJsonlEvents, extractSessionId, isStreamComplete } from "../../services/claude-cli.ts";
+import { addLog, formatToolUse } from "../../services/ticket-logs.ts";
 
 export const cliRouter = new Hono();
 
@@ -41,6 +44,53 @@ cliRouter.use("*", async (c, next) => {
   }
 
   await next();
+});
+
+// ── POST /api/v1/cli/tasks/create/ ────────────────────────────────────
+
+cliRouter.post("/tasks/create/", async (c) => {
+  const body = await c.req.json<{
+    ticket_id: string;
+    tasks: Array<{
+      description: string;
+      status?: string;
+    }>;
+  }>();
+
+  const { ticket_id, tasks } = body;
+  if (!ticket_id || !Array.isArray(tasks) || tasks.length === 0) {
+    return c.json({ error: "ticket_id and tasks array required" }, 400);
+  }
+
+  // Get max existing order
+  const existingTasks = await db
+    .select({ order: projectTodoLists.order })
+    .from(projectTodoLists)
+    .where(eq(projectTodoLists.ticketId, ticket_id));
+
+  let nextOrder = existingTasks.length > 0
+    ? Math.max(...existingTasks.map((t) => t.order)) + 1
+    : 0;
+
+  const created: Array<{ id: string; description: string }> = [];
+  for (const task of tasks) {
+    if (!task.description?.trim()) continue;
+    const [row] = await db
+      .insert(projectTodoLists)
+      .values({
+        ticketId: ticket_id,
+        description: task.description.trim(),
+        status: task.status ?? "pending",
+        order: nextOrder++,
+      })
+      .returning();
+    if (row) created.push({ id: row.id, description: row.description });
+  }
+
+  // Broadcast task update event
+  emit({ type: "ticket.tasks_updated", ticketId: ticket_id, taskIds: created.map((t) => t.id) });
+
+  return c.json({ created }, 201);
 });
 
 // ── POST /api/v1/cli/tasks/bulk/ ──────────────────────────────────────
@@ -177,6 +227,15 @@ cliRouter.post("/tech-stack/", async (c) => {
     .set({ techStack, updatedAt: new Date() })
     .where(eq(sandboxes.ticketId, ticket_id));
 
+  // Also save the stack identifier to the project for future executions
+  if (stackFields.framework || stackFields.language) {
+    const stackLabel = stackFields.framework || stackFields.language || "";
+    await db
+      .update(projects)
+      .set({ stack: stackLabel, updatedAt: new Date() })
+      .where(eq(projects.id, ticket.projectId));
+  }
+
   return c.json({ ok: true });
 });
 
@@ -273,6 +332,123 @@ cliRouter.post("/ticket-chat/", async (c) => {
 
   // Trigger the chat executor (fire-and-forget)
   emit({ type: "ticket.chat_message", ticketId: ticket_id, message, sender });
+
+  return c.json({ ok: true });
+});
+
+// ── POST /api/v1/cli/output/ ──────────────────────────────────────────
+
+/**
+ * Receives pushed JSONL output chunks from the VM forwarder loop.
+ * Decodes base64 data, parses JSONL events, logs to DB, broadcasts via WS.
+ * When done=true, emits ticket.execution_finished event.
+ */
+cliRouter.post("/output/", async (c) => {
+  let body: { ticket_id: string; data: string; done?: boolean; exit_code?: number };
+  try {
+    body = await c.req.json();
+  } catch (err) {
+    console.error("[cli/output] JSON parse error:", (err as Error).message);
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
+
+  const { ticket_id, data, done, exit_code } = body;
+  if (!ticket_id || !data) {
+    return c.json({ error: "ticket_id and data required" }, 400);
+  }
+
+  // Look up ticket owner (userId) for WS broadcasting
+  const [ticket] = await db
+    .select({ id: projectTickets.id, projectId: projectTickets.projectId })
+    .from(projectTickets)
+    .where(eq(projectTickets.id, ticket_id))
+    .limit(1);
+
+  if (!ticket) return c.json({ error: "Ticket not found" }, 404);
+
+  const [project] = await db
+    .select({ ownerId: projects.ownerId })
+    .from(projects)
+    .where(eq(projects.id, ticket.projectId))
+    .limit(1);
+
+  const ownerId = project?.ownerId;
+
+  // Decode base64 chunk
+  let rawText: string;
+  try {
+    rawText = Buffer.from(data, "base64").toString("utf-8");
+  } catch {
+    return c.json({ error: "Invalid base64 data" }, 400);
+  }
+
+  // Parse JSONL events
+  const events = parseJsonlEvents(rawText);
+
+  if (events.length > 0) {
+    // Extract session ID if present — save to sandbox
+    const sessionId = extractSessionId(events);
+    if (sessionId) {
+      await db
+        .update(sandboxes)
+        .set({ cliSessionId: sessionId, updatedAt: new Date() })
+        .where(eq(sandboxes.ticketId, ticket_id));
+    }
+
+    // Log each event to DB + WS
+    for (const ev of events) {
+      try {
+        const msg = (ev as any).message;
+        const content = Array.isArray(msg?.content) ? msg.content : [];
+
+        if (ev.type === "assistant") {
+          for (const block of content) {
+            if (block.type === "text" && block.text?.trim()) {
+              await addLog(ticket_id, block.text, "ai_response", ownerId);
+            } else if (block.type === "tool_use" && block.name) {
+              const toolMsg = formatToolUse(block.name, block.input ?? {});
+              await addLog(ticket_id, toolMsg, "command", ownerId);
+            }
+          }
+        } else if (ev.type === "user") {
+          for (const block of content) {
+            if (block.type === "tool_result") {
+              // content can be a string or array of content blocks
+              const text = typeof block.content === "string"
+                ? block.content
+                : Array.isArray(block.content)
+                  ? block.content.map((b: any) => b.text ?? "").join("\n")
+                  : "";
+              if (text.length > 50) {
+                await addLog(ticket_id, text.slice(0, 500), "command", ownerId);
+              }
+            }
+          }
+        } else if (ev.type === "result") {
+          // Skip logging result text — same content already logged from the
+          // final assistant message. Only log if it's an error subtype.
+        } else if (ev.type === "error") {
+          const errMsg = (ev as { type: "error"; error: string }).error;
+          await addLog(ticket_id, `CLI error: ${errMsg}`, "cli_error", ownerId);
+        }
+      } catch (err) {
+        console.error(`[cli/output] Error processing event type=${ev.type}:`, err);
+      }
+    }
+  } else if (rawText.trim()) {
+    // Non-JSONL text — log as cli_error (e.g. stderr output)
+    await addLog(ticket_id, rawText.trim().slice(0, 1000), "cli_error", ownerId);
+  }
+
+  // If VM signals completion, emit the event
+  if (done) {
+    emit({
+      type: "ticket.execution_finished",
+      ticketId: ticket_id,
+      status: exit_code === 0 ? "complete" : "failed",
+      exitCode: exit_code,
+    });
+  }
 
   return c.json({ ok: true });
 });

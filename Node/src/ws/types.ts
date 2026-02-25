@@ -1,7 +1,17 @@
 // ── WebSocket message types (matches existing chat.js format) ─────────────────
 
 export type WSIncoming =
-  | { type: "message"; message: string; conversation_id?: string; project_id?: string; turbo_mode?: boolean; user_role?: string }
+  | {
+      type: "message";
+      message: string;
+      conversation_id?: string;
+      project_id?: string;
+      turbo_mode?: boolean;
+      instant_mode?: boolean;
+      user_role?: string;
+      file?: { id?: string; name?: string; type?: string; size?: number };
+      file_data?: { id?: string; name?: string; type?: string; size?: number };
+    }
   | { type: "stop_generation"; conversation_id?: string }
   | { type: "heartbeat_ack" }
   | { type: "sync_state"; conversation_id?: string };

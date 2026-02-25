@@ -75,7 +75,9 @@ export const projectTickets = sqliteTable(
     // Git/GitHub metadata
     githubBranch: text("github_branch"),
     githubCommitSha: text("github_commit_sha"),
-    githubMergeStatus: text("github_merge_status"), // merged | conflict | failed | pending | reverted
+    githubPrUrl: text("github_pr_url"),
+    githubPrNumber: integer("github_pr_number"),
+    githubMergeStatus: text("github_merge_status"), // merged | conflict | failed | pending | pr_open | reverted
     githubMergeCommitSha: text("github_merge_commit_sha"),
     githubLastRevertSha: text("github_last_revert_sha"),
     githubRevertedAt: integer("github_reverted_at", { mode: "timestamp" }),

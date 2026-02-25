@@ -88,9 +88,15 @@ export async function onMessage(ws: ServerWebSocket<WsData>, rawData: string | B
   }
 
   if (msg.type === "message") {
-    const { message, conversation_id, project_id, turbo_mode, user_role } = msg;
+    const { message, conversation_id, project_id, turbo_mode, instant_mode, user_role, file, file_data } = msg;
+    const resolvedFile = file_data ?? file;
+    const normalizedMessage = message?.trim()
+      ? message
+      : resolvedFile?.name
+        ? `[Shared a file: ${resolvedFile.name}]`
+        : "";
 
-    if (!message?.trim()) {
+    if (!normalizedMessage.trim()) {
       send(ws, { type: "error", message: "Message cannot be empty" });
       return;
     }
@@ -115,10 +121,11 @@ export async function onMessage(ws: ServerWebSocket<WsData>, rawData: string | B
       const result = await handleStream({
         ws,
         userId: conn.userId,
-        userMessage: message,
+        userMessage: normalizedMessage,
         conversationId: conn.conversationId,
         projectId: conn.projectId,
         turboMode: turbo_mode,
+        instantMode: instant_mode,
         userRole: user_role,
         abortController: conn.abortController,
       });

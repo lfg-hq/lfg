@@ -3,7 +3,7 @@ import { requireAuth } from "../../auth/middleware.ts";
 import { db } from "../../config/db.ts";
 import { modelSelections, agentRoles } from "../../db/schema/chat.ts";
 import { eq } from "drizzle-orm";
-import { listModels } from "../../ai/provider.ts";
+import { listModels, DEFAULT_MODEL_KEY } from "../../ai/provider.ts";
 import type { auth } from "../../auth/index.ts";
 
 type AuthEnv = {
@@ -74,7 +74,7 @@ settings.get("/me", async (c) => {
   ]);
 
   return c.json({
-    modelKey: modelSel?.selectedModel ?? "claude_4.5_sonnet",
+    modelKey: modelSel?.selectedModel ?? DEFAULT_MODEL_KEY,
     role: roleRow?.name ?? "product_analyst",
     turboMode: roleRow?.turboMode ?? false,
   });

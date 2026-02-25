@@ -33,6 +33,8 @@ export {
   setWsBroadcast as setMiscWsBroadcast,
 } from "./misc-tools.ts";
 
+export { createInstantTools } from "./instant-tools.ts";
+
 // ── tools_product: Full product analyst toolset ───────────────────────────────
 import { getProjectDashboard, setProjectStack, captureProjectName } from "./project-tools.ts";
 import { streamDocumentContent, getFileList, getFileContent, updateFileContent } from "./document-tools.ts";

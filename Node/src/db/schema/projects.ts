@@ -29,6 +29,11 @@ export const projects = sqliteTable(
     status: text("status").notNull().default("active"), // active | archived | completed
     icon: text("icon").notNull().default("📋"),
 
+    // Repository
+    repoUrl: text("repo_url"),          // e.g. https://github.com/user/repo
+    repoOwner: text("repo_owner"),      // GitHub owner (user or org)
+    repoName: text("repo_name"),        // GitHub repo name
+
     // Stack
     stack: text("stack").default(""),
     customProjectDir: text("custom_project_dir"),

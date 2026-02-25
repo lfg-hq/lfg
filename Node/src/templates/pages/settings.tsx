@@ -335,9 +335,13 @@ export function SettingsPage({ user, apiKeys, claudeCode, github, activeSection 
               <img src="/public/images/anthropic-logo.png" style="width:18px;height:18px;object-fit:contain;" />
               Claude Code CLI
             </h3>
-            ${claudeCode?.hasCredentials ? html`
+            ${claudeCode?.hasCredentials && claudeCode?.authenticated ? html`
               <span style="font-size:.75rem;padding:.25rem .625rem;background:rgba(52,211,153,.1);color:#34d399;border:1px solid rgba(52,211,153,.25);border-radius:20px;">
                 <i class="fas fa-check-circle" style="margin-right:.25rem;"></i>Connected
+              </span>
+            ` : claudeCode?.hasCredentials && !claudeCode?.authenticated ? html`
+              <span style="font-size:.75rem;padding:.25rem .625rem;background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.25);border-radius:20px;">
+                <i class="fas fa-exclamation-triangle" style="margin-right:.25rem;"></i>Disconnected
               </span>
             ` : html`
               <span style="font-size:.75rem;padding:.25rem .625rem;background:rgba(255,255,255,.06);color:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.1);border-radius:20px;">
@@ -352,13 +356,24 @@ export function SettingsPage({ user, apiKeys, claudeCode, github, activeSection 
               <div>
                 <div class="byok-label">Authentication</div>
                 <div class="byok-desc">
-                  ${claudeCode?.hasCredentials
+                  ${claudeCode?.hasCredentials && claudeCode?.authenticated
                     ? "Your Claude credentials are stored. Ticket execution is enabled."
+                    : claudeCode?.hasCredentials && !claudeCode?.authenticated
+                    ? "Claude CLI session expired or disconnected. Please reconnect to resume ticket execution."
                     : "Connect your Claude account to enable AI-powered ticket execution."}
                 </div>
               </div>
               <div style="display:flex;gap:.5rem;flex-shrink:0;">
-                ${claudeCode?.hasCredentials ? html`
+                ${claudeCode?.hasCredentials && claudeCode?.authenticated ? html`
+                  <button id="cc-disconnect-btn" onclick="claudeCodeDisconnect()"
+                    class="llm-btn-remove" style="border-radius:7px;border:1px solid rgba(239,68,68,0.3);padding:.45rem .875rem;">
+                    <i class="fas fa-unlink"></i>&nbsp; Disconnect
+                  </button>
+                ` : claudeCode?.hasCredentials && !claudeCode?.authenticated ? html`
+                  <button id="cc-connect-btn" onclick="claudeCodeStartAuth()"
+                    class="llm-btn-save" style="border-radius:7px;padding:.45rem .875rem;">
+                    <i class="fas fa-plug"></i>&nbsp; Reconnect Claude Code
+                  </button>
                   <button id="cc-disconnect-btn" onclick="claudeCodeDisconnect()"
                     class="llm-btn-remove" style="border-radius:7px;border:1px solid rgba(239,68,68,0.3);padding:.45rem .875rem;">
                     <i class="fas fa-unlink"></i>&nbsp; Disconnect

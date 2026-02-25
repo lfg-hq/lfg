@@ -37,7 +37,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (socket && socket.readyState === WebSocket.OPEN) return;
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        let wsUrl = `${protocol}//${window.location.host}/ws/chat/`;
+        const wsPath = (window.__WS_PATH__ || '/ws/chat').replace(/\/+$/, '');
+        let wsUrl = `${protocol}//${window.location.host}${wsPath}/`;
         const params = [];
         if (conversationId) params.push(`conversation_id=${conversationId}`);
         if (projectId) params.push(`project_id=${projectId}`);
@@ -361,6 +362,45 @@ document.addEventListener('DOMContentLoaded', () => {
     // ---- File Upload ----
     const fileUploadBtn = document.getElementById('file-upload-btn');
     const fileUploadInput = document.getElementById('file-upload-input');
+    const recordAudioBtn = document.getElementById('record-audio-btn');
+
+    async function uploadFileToServer(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (conversationId) formData.append('conversation_id', conversationId);
+
+        const resp = await fetch(`/api/files/upload?_=${Date.now()}`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: formData,
+            credentials: 'same-origin',
+        });
+        if (!resp.ok) throw new Error(`Upload failed: HTTP ${resp.status}`);
+        return resp.json();
+    }
+
+    function renderAttachedFileIndicator(fileInfo) {
+        const existing = document.querySelector('.instant-file-attachment');
+        if (existing) existing.remove();
+
+        const indicator = document.createElement('div');
+        indicator.className = 'instant-file-attachment uploaded';
+        indicator.innerHTML = `
+            <i class="fas fa-paperclip"></i>
+            <span>${escapeHtml(fileInfo.name)}</span>
+            <button type="button" class="instant-file-remove" title="Remove"><i class="fas fa-times"></i></button>
+        `;
+
+        const inputWrapper = document.querySelector('.input-wrapper');
+        inputWrapper.insertBefore(indicator, inputWrapper.firstChild);
+        indicator.querySelector('.instant-file-remove').addEventListener('click', () => {
+            window.instantAttachedFile = null;
+            indicator.remove();
+        });
+    }
 
     if (fileUploadBtn && fileUploadInput) {
         fileUploadBtn.addEventListener('click', () => fileUploadInput.click());
@@ -383,51 +423,163 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Upload via REST API
             try {
-                const formData = new FormData();
-                formData.append('file', file);
-                if (conversationId) formData.append('conversation_id', conversationId);
-
-                const resp = await fetch(`/api/files/upload/?_=${Date.now()}`, {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRFToken': getCsrfToken(),
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    body: formData,
-                });
-                const data = await resp.json();
+                const data = await uploadFileToServer(file);
 
                 window.instantAttachedFile = {
                     file, name: file.name, type: file.type, size: file.size,
                     id: data.id || null,
                 };
 
-                indicator.classList.remove('uploading');
-                indicator.classList.add('uploaded');
-                indicator.innerHTML = `
-                    <i class="fas fa-paperclip"></i>
-                    <span>${escapeHtml(file.name)}</span>
-                    <button type="button" class="instant-file-remove" title="Remove"><i class="fas fa-times"></i></button>
-                `;
-                indicator.querySelector('.instant-file-remove').addEventListener('click', () => {
-                    window.instantAttachedFile = null;
-                    indicator.remove();
-                });
+                indicator.remove();
+                renderAttachedFileIndicator(window.instantAttachedFile);
             } catch (err) {
                 console.error('[Instant] File upload error:', err);
                 // Still allow attaching without server-side upload
                 window.instantAttachedFile = { file, name: file.name, type: file.type, size: file.size };
-                indicator.classList.remove('uploading');
-                indicator.classList.add('uploaded');
-                indicator.innerHTML = `
-                    <i class="fas fa-paperclip"></i>
-                    <span>${escapeHtml(file.name)}</span>
-                    <button type="button" class="instant-file-remove" title="Remove"><i class="fas fa-times"></i></button>
-                `;
-                indicator.querySelector('.instant-file-remove').addEventListener('click', () => {
-                    window.instantAttachedFile = null;
-                    indicator.remove();
+                indicator.remove();
+                renderAttachedFileIndicator(window.instantAttachedFile);
+            }
+        });
+    }
+
+    // ---- Model + Role settings ----
+    document.querySelectorAll('#model-submenu .submenu-option').forEach(option => {
+        option.addEventListener('click', async () => {
+            if (option.classList.contains('disabled')) return;
+            const modelKey = option.dataset.value;
+            if (!modelKey) return;
+            try {
+                await fetch('/api/settings/model', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ modelKey }),
                 });
+            } catch (err) {
+                console.warn('[Instant] Failed to persist model selection:', err);
+            }
+            document.querySelectorAll('#model-submenu .submenu-option').forEach(btn => btn.classList.remove('selected'));
+            option.classList.add('selected');
+            const label = option.querySelector('span')?.textContent?.trim() || modelKey;
+            const currentModelLeft = document.getElementById('current-model-left');
+            if (currentModelLeft) currentModelLeft.textContent = label;
+        });
+    });
+
+    document.querySelectorAll('#role-submenu .submenu-option').forEach(option => {
+        option.addEventListener('click', async () => {
+            const role = option.dataset.value;
+            if (!role) return;
+            try {
+                await fetch('/api/settings/role', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ role }),
+                });
+            } catch (err) {
+                console.warn('[Instant] Failed to persist role selection:', err);
+            }
+            document.querySelectorAll('#role-submenu .submenu-option').forEach(btn => btn.classList.remove('selected'));
+            option.classList.add('selected');
+            const label = option.querySelector('span')?.textContent?.trim() || 'Analyst';
+            const currentRoleLeft = document.getElementById('current-role-left');
+            if (currentRoleLeft) currentRoleLeft.textContent = label;
+        });
+    });
+
+    // ---- Microphone ----
+    if (recordAudioBtn) {
+        let mediaRecorder = null;
+        let chunks = [];
+        let recordingStream = null;
+
+        const resetMicButton = () => {
+            recordAudioBtn.classList.remove('recording');
+            recordAudioBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+        };
+
+        const stopStreamTracks = () => {
+            if (recordingStream) {
+                recordingStream.getTracks().forEach(track => track.stop());
+                recordingStream = null;
+            }
+        };
+
+        recordAudioBtn.addEventListener('click', async () => {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+                return;
+            }
+
+            try {
+                recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(recordingStream);
+                chunks = [];
+
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data?.size) chunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    stopStreamTracks();
+                    resetMicButton();
+                    const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+                    chunks = [];
+                    if (!audioBlob.size) return;
+
+                    const file = new File([audioBlob], `recording_${Date.now()}.webm`, { type: 'audio/webm' });
+                    const indicator = document.createElement('div');
+                    indicator.className = 'instant-file-attachment uploading';
+                    indicator.innerHTML = '<i class="fas fa-sync fa-spin"></i><span>Transcribing recording...</span>';
+                    const inputWrapper = document.querySelector('.input-wrapper');
+                    inputWrapper.insertBefore(indicator, inputWrapper.firstChild);
+
+                    try {
+                        const uploaded = await uploadFileToServer(file);
+                        const attachment = {
+                            file,
+                            name: file.name,
+                            type: file.type,
+                            size: file.size,
+                            id: uploaded.id || null,
+                        };
+
+                        let transcript = '';
+                        if (attachment.id) {
+                            const response = await fetch(`/api/files/transcribe/${attachment.id}`, {
+                                credentials: 'same-origin',
+                            });
+                            if (response.ok) {
+                                const data = await response.json();
+                                transcript = (data.text || '').trim();
+                            }
+                        }
+
+                        indicator.remove();
+                        if (transcript) {
+                            const prefix = chatInput.value.trim();
+                            chatInput.value = prefix ? `${prefix}\n${transcript}` : transcript;
+                            chatInput.dispatchEvent(new Event('input'));
+                            chatInput.focus();
+                        } else {
+                            window.instantAttachedFile = attachment;
+                            renderAttachedFileIndicator(attachment);
+                        }
+                    } catch (error) {
+                        console.warn('[Instant] Audio transcription failed:', error);
+                        indicator.remove();
+                    }
+                };
+
+                mediaRecorder.start();
+                recordAudioBtn.classList.add('recording');
+                recordAudioBtn.innerHTML = '<i class="fas fa-stop"></i>';
+            } catch (error) {
+                console.error('[Instant] Microphone access error:', error);
+                resetMicButton();
+                stopStreamTracks();
+                alert('Unable to access microphone. Please check your permissions.');
             }
         });
     }

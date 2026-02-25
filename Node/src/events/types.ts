@@ -107,7 +107,7 @@ export type AppEvent =
   | { type: "ticket.input_requested"; payload: { ticketId: string; question: string; options?: string[] } }
   | { type: "ticket.chat_message"; payload: { ticketId: string; message: string; sender: string } }
   | { type: "ticket.execution_started"; payload: { ticketId: string; sandboxId: string } }
-  | { type: "ticket.execution_finished"; payload: { ticketId: string; status: "complete" | "failed"; durationMs?: number } }
+  | { type: "ticket.execution_finished"; payload: { ticketId: string; status: "complete" | "failed"; durationMs?: number; exitCode?: number } }
   | { type: "document.created"; payload: DocumentCreatedPayload }
   | { type: "document.updated"; payload: DocumentUpdatedPayload }
   | { type: "document.file_created"; payload: DocumentCreatedPayload }

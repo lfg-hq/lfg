@@ -16,6 +16,11 @@ export const requireAuth = createMiddleware<{
     return await next();
   }
 
+  // CLI callback API uses its own X-CLI-API-Key auth — skip session auth
+  if (c.req.path.startsWith("/api/v1/cli")) {
+    return await next();
+  }
+
   const session = await auth.api.getSession({
     headers: c.req.raw.headers,
   });

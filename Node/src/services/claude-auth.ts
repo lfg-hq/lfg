@@ -420,7 +420,7 @@ fi
 // ── Credential persistence ────────────────────────────────────────────────
 
 /**
- * Read ~/.claude/.credentials.json from the VM and save it to the DB.
+ * Read /root/.claude/.credentials.json from the VM and save it to the DB.
  */
 export async function saveCredentialsToDB(
   workspaceName: string,
@@ -428,14 +428,18 @@ export async function saveCredentialsToDB(
 ): Promise<boolean> {
   try {
     const r = await execOnWorkspace(workspaceName,
-      "cat ~/.claude/.credentials.json 2>/dev/null",
+      `cat /root/.claude/.credentials.json 2>/dev/null || echo "__NO_CREDS__"`,
       { timeout: 15_000 }
     );
     const creds = r.output.trim();
-    if (!creds || r.exitCode !== 0) return false;
+    if (!creds || creds === "__NO_CREDS__" || r.exitCode !== 0) {
+      console.warn(`[claude-auth] saveCredentialsToDB: no credentials found on VM ${workspaceName}`);
+      return false;
+    }
 
     // Validate JSON
-    JSON.parse(creds);
+    const parsed = JSON.parse(creds);
+    console.log(`[claude-auth] saveCredentialsToDB: saving credentials for user ${userId}, len=${creds.length}, hasAccessToken=${!!parsed.accessToken}`);
 
     await db.update(profiles)
       .set({
@@ -447,7 +451,8 @@ export async function saveCredentialsToDB(
       .where(eq(profiles.userId, userId));
 
     return true;
-  } catch {
+  } catch (err) {
+    console.error(`[claude-auth] saveCredentialsToDB failed:`, err);
     return false;
   }
 }

@@ -6,12 +6,14 @@ import { env } from "./config/env.ts";
 import landing from "./routes/landing.ts";
 import authRoutes from "./routes/auth.ts";
 import chatRoutes from "./routes/chat.ts";
+import instantRoutes from "./routes/instant.ts";
 import projectsRoutes from "./routes/projects.ts";
 import settingsRoutes from "./routes/settings.ts";
 import filesApi from "./routes/api/files.ts";
 import settingsApi from "./routes/api/settings.ts";
 import ticketsApi from "./routes/api/tickets.ts";
 import conversationsApi from "./routes/api/conversations.ts";
+import instantApi from "./routes/api/instant.ts";
 import { cliRouter } from "./routes/api/cli.ts";
 import claudeAuthApi from "./routes/api/claude-auth.ts";
 import { auth } from "./auth/index.ts";
@@ -21,11 +23,19 @@ import { agentRoles, modelSelections } from "./db/schema/chat.ts";
 import { eq } from "drizzle-orm";
 import { onOpen, onClose, onMessage } from "./ws/chat-handler.ts";
 import type { WsData } from "./ws/types.ts";
+import { DEFAULT_MODEL_KEY } from "./ai/provider.ts";
 
 const app = new Hono();
 
 // ── Trim trailing slashes (Django-compat: chat.js calls /api/foo/:id/) ──
-app.use(trimTrailingSlash());
+// Skip for CLI callback routes — trimTrailingSlash 301-redirects POST→GET which breaks them
+app.use("*", async (c, next) => {
+  if (c.req.path.startsWith("/api/v1/cli")) {
+    return next();
+  }
+  const mw = trimTrailingSlash();
+  return mw(c, next);
+});
 
 // ── Request logging ──────────────────────────────────────────────────
 app.use("*", logger());
@@ -41,12 +51,14 @@ app.get("/health", (c) => c.json({ status: "ok" }));
 app.route("/", authRoutes);
 app.route("/", landing);
 app.route("/", chatRoutes);
+app.route("/", instantRoutes);
 app.route("/", projectsRoutes);
 app.route("/", settingsRoutes);
 app.route("/api/files", filesApi);
 app.route("/api/settings", settingsApi);
 app.route("/api/projects", ticketsApi);
 app.route("/api/conversations", conversationsApi);
+app.route("/api/instant", instantApi);
 app.route("/api/v1/cli", cliRouter);
 app.route("/api/v1/claude-auth", claudeAuthApi);
 
@@ -65,7 +77,7 @@ app.get("/accounts/agent-settings/", async (c) => {
     success: true,
     turbo_mode: roleRow?.turboMode ?? false,
     agent_role: roleRow?.name ?? "product_analyst",
-    model_key: modelRow?.selectedModel ?? "claude_4.5_sonnet",
+    model_key: modelRow?.selectedModel ?? DEFAULT_MODEL_KEY,
   });
 });
 

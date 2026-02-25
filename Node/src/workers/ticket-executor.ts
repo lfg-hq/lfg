@@ -9,15 +9,15 @@
  * Step 3: Setup git repo, checkout feature branch
  * Step 4: Verify Claude auth (credentials from DB)
  * Step 5: Build prompt with project context + LFG API integration
- * Step 6: Start Claude CLI via runner script (nohup, claudeuser)
- * Step 7: Poll JSONL output, forward logs via WS in real-time
+ * Step 6: Start Claude CLI via runner script (nohup, root)
+ * Step 7: Wait for completion (VM pushes output to /api/v1/cli/output/)
  * Step 8: On completion: commit, push, update ticket status
  *
  * Also handles ticket.chat_message events for session-resume chat.
  */
 
 import { db } from "../config/db.ts";
-import { projectTickets, projectTodoLists, ticketLogs } from "../db/schema/tickets.ts";
+import { projectTickets, projectTodoLists } from "../db/schema/tickets.ts";
 import { projects } from "../db/schema/projects.ts";
 import { profiles, githubTokens } from "../db/schema/users.ts";
 import { sandboxes } from "../db/schema/sandbox.ts";
@@ -28,35 +28,39 @@ import {
 } from "../services/mags.ts";
 import {
   startClaudeCli,
-  pollOutput,
-  parseJsonlEvents,
-  extractSessionId,
-  isStreamComplete,
-  isStaleSession,
-  extractExitCode,
-  hasAuthError,
-  type PollResult,
+  startClaudeCliChat,
+  preflightCheck,
+  saveCredentialsFromVm,
+  markClaudeDisconnected,
 } from "../services/claude-cli.ts";
 import {
   commitAndPush,
+  mergeToLfgAgent,
+  createGitHubRepo,
+  initAndPushRepo,
 } from "../services/git.ts";
 import {
   buildBuilderPrompt,
   buildTicketChatPrompt,
 } from "../ai/prompts/builder.ts";
+import { addLog } from "../services/ticket-logs.ts";
 import { broadcastToUser } from "../ws/connection-manager.ts";
 import { eq, and } from "drizzle-orm";
 
 const CALLBACK_BASE_URL = process.env.APP_URL ?? "http://localhost:3000";
-const POLL_INTERVAL_MS = 5_000;
-const MAX_POLL_DURATION_MS = 45 * 60 * 1000; // 45 minutes
-const MAX_SSH_FAILURES = 5;
+const MAX_WAIT_DURATION_MS = 45 * 60 * 1000; // 45 minutes
+const CHAT_MAX_WAIT_DURATION_MS = 10 * 60 * 1000; // 10 minutes
 const WORKING_DIR = "/root";
-const CLAUDE_HOME = "/home/claudeuser";
 
 // ── Subscriber Setup ──────────────────────────────────────────────────
 
-export function startTicketWorker() {
+export async function startTicketWorker() {
+  // Reset any tickets stuck in executing state from a previous crash
+  await db
+    .update(projectTickets)
+    .set({ queueStatus: "none", updatedAt: new Date() })
+    .where(eq(projectTickets.queueStatus, "executing"));
+
   bus.on("ticket.queued", async (event) => {
     const { ticketId } = event.payload;
     try {
@@ -117,7 +121,17 @@ async function executeTicket(ticketId: string): Promise<void> {
     .limit(1);
 
   const githubToken = ghToken?.accessToken;
-  const cliApiKey = profile?.cliApiKey ?? "";
+
+  // Auto-generate CLI API key if missing (required for callback auth)
+  let cliApiKey = profile?.cliApiKey ?? "";
+  if (!cliApiKey) {
+    cliApiKey = `lfg_cli_${crypto.randomUUID().replace(/-/g, "")}`;
+    await db
+      .insert(profiles)
+      .values({ userId: ownerId, cliApiKey })
+      .onConflictDoUpdate({ target: profiles.userId, set: { cliApiKey, updatedAt: new Date() } });
+    console.log(`[ticket-executor] Auto-generated CLI API key for user ${ownerId}`);
+  }
 
   // Warn if no GitHub — code will be lost on VM restart
   if (!githubToken) {
@@ -212,16 +226,18 @@ async function executeTicket(ticketId: string): Promise<void> {
   console.log(`[ticket-executor] Step 3: Setting up git`);
   let gitSetupError: string | null = null;
 
-  // Extract GitHub owner/repo from project.stack or repoUrl
-  const repoUrl = extractRepoUrl(project.stack ?? "");
-  let githubOwner: string | null = null;
-  let githubRepo: string | null = null;
+  // Extract GitHub owner/repo from project fields or fallback to stack text
+  let githubOwner: string | null = project.repoOwner ?? null;
+  let githubRepo: string | null = project.repoName ?? null;
+  const repoUrl = project.repoUrl ?? extractRepoUrl(project.stack ?? "");
 
-  if (repoUrl) {
-    const ghMatch = repoUrl.match(/github\.com\/([^/]+)\/([^/.]+)/);
-    if (ghMatch) {
-      githubOwner = ghMatch[1] ?? null;
-      githubRepo = ghMatch[2] ?? null;
+  if (!githubOwner || !githubRepo) {
+    if (repoUrl) {
+      const ghMatch = repoUrl.match(/github\.com\/([^/]+)\/([^/.]+)/);
+      if (ghMatch) {
+        githubOwner = ghMatch[1] ?? null;
+        githubRepo = ghMatch[2] ?? null;
+      }
     }
   }
 
@@ -252,18 +268,28 @@ else
     cd ${projectDirName}
 fi
 
-# Checkout feature branch — always branch from lfg-agent if creating new
-if git rev-parse --verify ${featureBranch} 2>/dev/null; then
-    git checkout ${featureBranch}
-    if git rev-parse --verify origin/${featureBranch} 2>/dev/null; then
-        git reset --hard origin/${featureBranch}
-    fi
-else
-    git checkout -b ${featureBranch} origin/${featureBranch} 2>/dev/null || \
-        (git fetch origin lfg-agent 2>/dev/null && git checkout -b ${featureBranch} origin/lfg-agent 2>/dev/null) || \
-        echo "BRANCH_ERROR"
+# Ensure lfg-agent branch exists (create from main/default if not)
+if ! git rev-parse --verify origin/lfg-agent 2>/dev/null; then
+    echo "CREATING_LFG_AGENT_BRANCH"
+    DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
+    git checkout "$DEFAULT_BRANCH" 2>/dev/null || git checkout main 2>/dev/null || true
+    git checkout -b lfg-agent
+    git push -u origin lfg-agent 2>&1
 fi
-git pull origin ${featureBranch} 2>/dev/null || echo "PULL_SKIPPED"
+
+# Checkout feature branch — always branch from lfg-agent if creating new
+if git rev-parse --verify origin/${featureBranch} 2>/dev/null; then
+    echo "FEATURE_BRANCH_EXISTS_REMOTE"
+    git checkout ${featureBranch} 2>/dev/null || git checkout -b ${featureBranch} origin/${featureBranch}
+    git reset --hard origin/${featureBranch}
+elif git rev-parse --verify ${featureBranch} 2>/dev/null; then
+    echo "FEATURE_BRANCH_EXISTS_LOCAL"
+    git checkout ${featureBranch}
+else
+    echo "CREATING_FEATURE_BRANCH"
+    git checkout origin/lfg-agent 2>/dev/null || git checkout lfg-agent 2>/dev/null || true
+    git checkout -b ${featureBranch}
+fi
 
 git config user.email "ai@lfg.dev"
 git config user.name "LFG AI"
@@ -296,16 +322,92 @@ git branch --show-current
       gitSetupError = `Git setup failed: ${err}`;
       console.error(`[ticket-executor] ${gitSetupError}`);
     }
+  } else if (githubToken) {
+    // No repo linked — auto-create one on GitHub (matching Django behavior)
+    const repoName = project.providedName || project.name;
+    await addLog(ticketId, `Creating GitHub repository: ${repoName}...`, "command", ownerId);
+    console.log(`[ticket-executor] No repo linked — auto-creating GitHub repo: ${repoName}`);
+
+    try {
+      const repoResult = await createGitHubRepo({
+        repoName,
+        description: `LFG Project: ${project.name}`,
+        isPrivate: true,
+        githubToken,
+      });
+
+      githubOwner = repoResult.owner;
+      githubRepo = repoResult.repoName;
+
+      // Save repo info to project so future executions find it
+      await db.update(projects).set({
+        repoUrl: repoResult.repoUrl,
+        repoOwner: repoResult.owner,
+        repoName: repoResult.repoName,
+        updatedAt: new Date(),
+      }).where(eq(projects.id, project.id));
+
+      await addLog(
+        ticketId,
+        repoResult.created
+          ? `Created repo: ${githubOwner}/${githubRepo}`
+          : `Using existing repo: ${githubOwner}/${githubRepo}`,
+        "command",
+        ownerId
+      );
+
+      // Ensure project dir exists, init git, push initial commit
+      await execOnWorkspace(workspaceId, `mkdir -p "${WORKING_DIR}/${projectDirName}"`, {
+        timeout: 15_000,
+      });
+
+      await initAndPushRepo({
+        workspaceId,
+        projectDir: `${WORKING_DIR}/${projectDirName}`,
+        repoUrl: repoResult.repoUrl,
+        branch: "main",
+        githubToken,
+      });
+
+      // Create the feature branch from lfg-agent (initAndPushRepo leaves us on lfg-agent)
+      const branchScript = `
+cd "${WORKING_DIR}/${projectDirName}"
+git checkout lfg-agent 2>/dev/null || true
+git checkout -b ${featureBranch}
+echo "BRANCH_CREATED"
+`.trim();
+      const branchB64 = Buffer.from(branchScript).toString("base64");
+      await execOnWorkspace(workspaceId, `echo ${branchB64} | base64 -d | sh`, { timeout: 30_000 });
+
+      // Save branch name to ticket
+      await db
+        .update(projectTickets)
+        .set({ githubBranch: featureBranch, githubMergeStatus: "pending", updatedAt: new Date() })
+        .where(eq(projectTickets.id, ticketId));
+
+      console.log(`[ticket-executor] Auto-created repo and set up branch: ${featureBranch}`);
+    } catch (err) {
+      console.error(`[ticket-executor] Auto-create repo failed:`, err);
+      await addLog(ticketId, `Failed to create GitHub repo: ${err}`, "command", ownerId);
+      // Fall through — continue without git
+      githubOwner = null;
+      githubRepo = null;
+      await execOnWorkspace(workspaceId, `mkdir -p "${WORKING_DIR}/${projectDirName}"`, {
+        timeout: 15_000,
+      });
+    }
   } else {
-    // No repo — just ensure project dir exists
+    // No GitHub token at all — just ensure project dir exists
     await execOnWorkspace(workspaceId, `mkdir -p "${WORKING_DIR}/${projectDirName}"`, {
       timeout: 15_000,
     });
-    console.log(`[ticket-executor] No GitHub repo linked — skipping git setup`);
-    await addLog(ticketId, "No GitHub repo linked — starting fresh project", "command", ownerId);
+    console.log(`[ticket-executor] No GitHub token — skipping git setup`);
+    await addLog(ticketId, "No GitHub token — code will not be persisted to a repository", "command", ownerId);
   }
 
-  // ── Step 4: Credentials are injected inline by startClaudeCli ──────
+  // ── Step 4: Refresh + inject credentials ────────────────────────────
+  console.log(`[ticket-executor] Step 4: Refreshing credentials from auth sandbox`);
+  await refreshCredentialsFromAuthSandbox(ownerId);
   console.log(`[ticket-executor] Step 4: Credentials will be injected by CLI launcher`);
   await addLog(ticketId, "Injecting Claude credentials...", "command", ownerId);
 
@@ -320,7 +422,7 @@ git branch --show-current
 ${gitSetupError}
 
 Before implementing, fix the git issue:
-1. Check: cd ${CLAUDE_HOME}/${projectDirName} && git status
+1. Check: cd ${WORKING_DIR}/${projectDirName} && git status
 2. Resolve any conflicts or uncommitted changes
 3. Checkout the correct branch: git checkout ${featureBranch}
 `;
@@ -335,10 +437,20 @@ Before implementing, fix the git issue:
     await addLog(ticketId, "Resuming existing Claude session...", "command", ownerId);
     prompt = `Continue implementing ticket #${ticket.id}: ${ticket.name}\n\n` +
       `The user clicked 'Continue' to resume execution. ` +
-      `Check the current state of the project at ${CLAUDE_HOME}/${projectDirName}, ` +
+      `Check the current state of the project at ${WORKING_DIR}/${projectDirName}, ` +
       `review what has already been done, and continue implementing any remaining work. ` +
       `When done, call the status API to mark the ticket complete.`;
   } else {
+    // Load saved tech stack from sandbox (agent may have reported it in a previous run)
+    const savedTechStack = sandbox.techStack as {
+      language?: string;
+      framework?: string;
+      packageManager?: string;
+      startCommand?: string;
+      buildCommand?: string;
+      port?: number;
+    } | null;
+
     prompt = buildBuilderPrompt({
       ticket: {
         id: ticket.id,
@@ -354,7 +466,9 @@ Before implementing, fix the git issue:
         id: project.id,
         name: project.name,
         repoUrl: repoUrl ?? undefined,
+        techStack: project.stack || undefined,
       },
+      techStack: savedTechStack ?? undefined,
       callbackBaseUrl: CALLBACK_BASE_URL,
       cliApiKey,
       tasks: tasks.map((t) => ({
@@ -365,7 +479,7 @@ Before implementing, fix the git issue:
     });
 
     // Append git error context and project path info
-    prompt += `\n\nPROJECT PATH: ${CLAUDE_HOME}/${projectDirName}\n`;
+    prompt += `\n\nPROJECT PATH: ${WORKING_DIR}/${projectDirName}\n`;
     if (gitErrorContext) prompt += gitErrorContext;
   }
 
@@ -402,162 +516,39 @@ Before implementing, fix the git issue:
   console.log(`[ticket-executor] CLI started, pid=${backgroundPid}, file=${outputFile}`);
   await addLog(ticketId, `CLI started (pid ${backgroundPid ?? "unknown"})`, "command", ownerId);
 
-  // ── Step 7: Poll JSONL output ───────────────────────────────────────
-  let offset = 0;
-  let sessionId: string | undefined = existingSessionId;
-  let completed = false;
-  let implementationStatus: "complete" | "failed" | null = null;
-  let pollCount = 0;
-  let emptyPollCount = 0;
-  let consecutiveSshFailures = 0;
-  let allOutput = "";
-
-  const deadline = Date.now() + MAX_POLL_DURATION_MS;
-
-  while (Date.now() < deadline && !completed) {
-    await sleep(POLL_INTERVAL_MS);
-    pollCount++;
-
-    let pollResult: PollResult;
+  // ── Debug: Check forwarder connectivity after a few seconds ─────
+  setTimeout(async () => {
     try {
-      pollResult = await pollOutput(workspaceId, outputFile, offset, backgroundPid);
-      consecutiveSshFailures = 0;
+      const debugResult = await execOnWorkspace(workspaceId, `cat /tmp/forwarder_debug.log 2>/dev/null || echo "NO_DEBUG_LOG"`, { timeout: 15_000 });
+      console.log(`[ticket-executor] FORWARDER DEBUG:\n${debugResult.output}`);
+      if (debugResult.output.includes("NO_DEBUG_LOG")) {
+        console.log(`[ticket-executor] Runner script hasn't written debug log yet — may still be starting`);
+      }
     } catch (err) {
-      consecutiveSshFailures++;
-      console.error(`[ticket-executor] Poll error #${consecutiveSshFailures}:`, err);
-      if (consecutiveSshFailures >= MAX_SSH_FAILURES) {
-        await addLog(ticketId, `Too many SSH failures (${MAX_SSH_FAILURES}), aborting`, "command", ownerId);
-        break;
-      }
-      continue;
+      console.log(`[ticket-executor] Could not read debug log:`, err);
     }
+  }, 5_000);
 
-    const { data, newOffset, alive } = pollResult;
+  // ── Step 7: Wait for completion via push-based output streaming ─────
+  // The VM's runner script pushes JSONL output to POST /api/v1/cli/output/
+  // which handles all log parsing, DB inserts, and WS broadcasting.
+  // The executor just waits for the ticket.execution_finished event.
+  console.log(`[ticket-executor] Waiting for VM to push output via callback API...`);
 
-    if (!data.trim()) {
-      emptyPollCount++;
-      if (emptyPollCount % 12 === 0) {
-        console.log(`[ticket-executor] Poll #${pollCount}: ${emptyPollCount} empty polls, alive=${alive}`);
-        await addLog(ticketId, `Waiting for CLI output... (${emptyPollCount * 5}s elapsed)`, "command", ownerId);
-      }
-      // If process is dead and output is empty, it may have crashed
-      if (!alive && emptyPollCount > 3) {
-        console.log(`[ticket-executor] Process dead with no output, ending poll`);
-        await addLog(ticketId, "CLI process ended without output", "command", ownerId);
-        break;
-      }
-      continue;
-    }
+  const waitResult = await waitForCompletion(ticketId, MAX_WAIT_DURATION_MS);
 
-    emptyPollCount = 0;
-    offset = newOffset;
-    allOutput += data;
-    console.log(`[ticket-executor] Poll #${pollCount}: got ${data.length} bytes, offset=${offset}, alive=${alive}`);
-
-    // Parse events
-    const events = parseJsonlEvents(data);
-    if (events.length > 0) {
-      console.log(`[ticket-executor] Parsed ${events.length} events: ${events.map(e => e.type).join(", ")}`);
-    }
-
-    // Extract session ID
-    if (!sessionId) {
-      sessionId = extractSessionId(events) ?? undefined;
-      if (sessionId) {
-        console.log(`[ticket-executor] Got session ID: ${sessionId}`);
-        await db
-          .update(sandboxes)
-          .set({ cliSessionId: sessionId, updatedAt: new Date() })
-          .where(eq(sandboxes.id, sandbox.id));
-      }
-    }
-
-    // Log events to DB + WS
-    for (const ev of events) {
-      if (ev.type === "assistant") {
-        for (const block of ev.message.content) {
-          if (block.type === "text" && block.text) {
-            await addLog(ticketId, block.text, "ai_response", ownerId);
-          } else if (block.type === "tool_use" && block.name) {
-            // Format tool use like Django does
-            const toolMsg = formatToolUse(block.name, block.input ?? {});
-            await addLog(ticketId, toolMsg, "command", ownerId);
-          }
-        }
-      } else if (ev.type === "user") {
-        // Tool results — log significant ones
-        for (const block of ev.message.content) {
-          if (block.type === "tool_result" && block.content && block.content.length > 50) {
-            await addLog(ticketId, block.content.slice(0, 500), "command", ownerId);
-          }
-        }
-      } else if (ev.type === "error") {
-        const errMsg = (ev as { type: "error"; error: string }).error;
-        console.error(`[ticket-executor] CLI error event:`, errMsg);
-        await addLog(ticketId, `CLI error: ${errMsg}`, "command", ownerId);
-      }
-    }
-
-    // Check for completion
-    if (data.includes("IMPLEMENTATION_STATUS: COMPLETE") || allOutput.includes("IMPLEMENTATION_STATUS: COMPLETE")) {
-      implementationStatus = "complete";
-      completed = true;
-    } else if (data.includes("IMPLEMENTATION_STATUS: FAILED") || allOutput.includes("IMPLEMENTATION_STATUS: FAILED")) {
-      implementationStatus = "failed";
-      completed = true;
-    } else if (isStreamComplete(events)) {
-      // result event found — treat as complete
-      implementationStatus = "complete";
-      completed = true;
-    }
-
-    // If process died, do one more read then stop
-    if (!alive && !completed) {
-      await sleep(3000);
-      try {
-        const finalPoll = await pollOutput(workspaceId, outputFile, offset, backgroundPid);
-        if (finalPoll.data.trim()) {
-          allOutput += finalPoll.data;
-          const finalEvents = parseJsonlEvents(finalPoll.data);
-          for (const ev of finalEvents) {
-            if (ev.type === "assistant") {
-              for (const block of ev.message.content) {
-                if (block.type === "text" && block.text) {
-                  await addLog(ticketId, block.text, "ai_response", ownerId);
-                }
-              }
-            }
-          }
-          if (finalPoll.data.includes("IMPLEMENTATION_STATUS: COMPLETE")) {
-            implementationStatus = "complete";
-          } else if (finalPoll.data.includes("IMPLEMENTATION_STATUS: FAILED")) {
-            implementationStatus = "failed";
-          }
-        }
-      } catch { /* ignore */ }
-
-      // Check exit code
-      const exitCode = extractExitCode(allOutput);
-      if (exitCode === 0 && !implementationStatus) {
-        implementationStatus = "complete";
-      }
-      completed = true;
-    }
-  }
-
-  console.log(`[ticket-executor] Polling finished: completed=${completed}, status=${implementationStatus}, polls=${pollCount}`);
-
-  if (!completed) {
+  let implementationStatus: "complete" | "failed" | null = null;
+  if (waitResult.status === "complete") {
+    implementationStatus = "complete";
+  } else if (waitResult.status === "failed") {
     implementationStatus = "failed";
-    await addLog(ticketId, "Execution timed out", "command", ownerId);
+  } else {
+    // timeout
+    implementationStatus = "failed";
+    await addLog(ticketId, "Execution timed out (45 minutes)", "command", ownerId);
   }
 
-  // Check for auth errors
-  if (hasAuthError(allOutput)) {
-    console.error(`[ticket-executor] Auth error detected in output`);
-    await addLog(ticketId, "Claude authentication error — please reconnect in Settings", "command", ownerId);
-    implementationStatus = "failed";
-  }
+  console.log(`[ticket-executor] Wait finished: status=${waitResult.status}, exitCode=${waitResult.exitCode}`);
 
   // ── Step 8: Commit & finalize ───────────────────────────────────────
   const durationMs = Date.now() - startTime;
@@ -567,7 +558,7 @@ Before implementing, fix the git issue:
       await addLog(ticketId, "Committing changes...", "command", ownerId);
       const { sha } = await commitAndPush({
         workspaceId,
-        projectDir: `${CLAUDE_HOME}/${projectDirName}`,
+        projectDir: `${WORKING_DIR}/${projectDirName}`,
         commitMessage: `feat: ${ticket.name}`,
         featureBranch,
         repoUrl: `https://github.com/${githubOwner}/${githubRepo}.git`,
@@ -582,6 +573,29 @@ Before implementing, fix the git issue:
           updatedAt: new Date(),
         })
         .where(eq(projectTickets.id, ticketId));
+
+      // Merge feature branch → lfg-agent (direct push, no PR)
+      try {
+        await addLog(ticketId, "Merging to lfg-agent...", "command", ownerId);
+        const { sha: mergeSha } = await mergeToLfgAgent({
+          workspaceId,
+          projectDir: `${WORKING_DIR}/${projectDirName}`,
+          featureBranch,
+          repoUrl: `https://github.com/${githubOwner}/${githubRepo}.git`,
+          githubToken,
+        });
+        await db
+          .update(projectTickets)
+          .set({
+            githubMergeStatus: "merged",
+            updatedAt: new Date(),
+          })
+          .where(eq(projectTickets.id, ticketId));
+        await addLog(ticketId, `Merged to lfg-agent (${mergeSha.slice(0, 7)})`, "command", ownerId);
+      } catch (mergeErr) {
+        console.warn(`[ticket-executor] Merge to lfg-agent failed:`, mergeErr);
+        await addLog(ticketId, `Merge to lfg-agent failed: ${mergeErr}`, "command", ownerId);
+      }
     } catch (err) {
       await addLog(ticketId, `Git commit failed: ${err}`, "command", ownerId);
     }
@@ -599,24 +613,19 @@ Before implementing, fix the git issue:
       })
       .where(eq(projectTickets.id, ticketId));
     await addLog(ticketId, "Ticket implementation complete!", "command", ownerId);
+    broadcastToUser(ownerId, { type: "ticket_status", ticketId, status: "review", queueStatus: "none" });
   } else {
     await markTicketFailed(ticketId, "Implementation did not complete", ownerId);
+    broadcastToUser(ownerId, { type: "ticket_status", ticketId, status: "failed", queueStatus: "none" });
   }
 
-  // Save session ID for future resume
-  if (sessionId && sandbox) {
-    await db
-      .update(sandboxes)
-      .set({ cliSessionId: sessionId, updatedAt: new Date() })
-      .where(eq(sandboxes.id, sandbox.id));
-  }
+  // Session ID is now saved by the /api/v1/cli/output/ endpoint
+  // when it receives the init event from the JSONL stream.
 
-  emit({
-    type: "ticket.execution_finished",
-    ticketId,
-    status: implementationStatus ?? "failed",
-    durationMs,
-  });
+  // Save credentials back to DB (may have been refreshed during the run)
+  if (sandbox?.magsWorkspaceId) {
+    await saveCredentialsFromVm(sandbox.magsWorkspaceId, ownerId);
+  }
 }
 
 // ── Chat Resume Executor ──────────────────────────────────────────────
@@ -652,13 +661,32 @@ async function executeTicketChat(
 
   const sandbox = await findExistingSandbox(ticketId);
   if (!sandbox?.magsWorkspaceId) {
-    await addLog(ticketId, "No active sandbox for ticket chat", "command", ownerId);
+    await addLog(ticketId, "No active sandbox for this ticket. Please build the ticket first.", "command", ownerId);
     return;
   }
 
   const workspaceId = sandbox.magsWorkspaceId;
   const projectDirName = "project";
   let sessionId = sandbox.cliSessionId ?? undefined;
+
+  // Refresh credentials from auth sandbox (may have been auto-refreshed)
+  await refreshCredentialsFromAuthSandbox(ownerId);
+
+  // Pre-flight: verify Claude CLI is working
+  console.log(`[ticket-executor] Chat: running pre-flight check on workspace ${workspaceId}`);
+  const preflight = await preflightCheck(workspaceId, ownerId);
+  if (!preflight.ok) {
+    console.error(`[ticket-executor] Chat: pre-flight failed:`, preflight.error);
+    const errorMsg = preflight.error ?? "Claude CLI is not connected. Please connect Claude Code in Settings.";
+    // Mark as disconnected in DB so Settings page shows correct status
+    if (preflight.needsReconnect) {
+      await markClaudeDisconnected(ownerId);
+    }
+    // Log as cli_error type so frontend can style it differently
+    await addLog(ticketId, errorMsg, "cli_error", ownerId);
+    return;
+  }
+  console.log(`[ticket-executor] Chat: pre-flight passed`);
 
   const prompt = buildTicketChatPrompt(
     {
@@ -679,7 +707,8 @@ async function executeTicketChat(
 
   console.log(`[ticket-executor] Chat: starting CLI for ticket ${ticketId}, workspace ${workspaceId}, session=${sessionId ?? 'none'}`);
 
-  const { outputFile, backgroundPid } = await startClaudeCli({
+  // Use lightweight chat launcher (no user creation, just prompt + launch)
+  const { outputFile, backgroundPid } = await startClaudeCliChat({
     workspaceId,
     prompt,
     projectDir: projectDirName,
@@ -690,106 +719,125 @@ async function executeTicketChat(
 
   console.log(`[ticket-executor] Chat: CLI started, pid=${backgroundPid}, output=${outputFile}`);
 
-  // Poll cycle for chat
-  let offset = 0;
-  const deadline = Date.now() + 10 * 60 * 1000;
-  let completed = false;
-  let allOutput = "";
+  // Wait for completion via push-based output streaming
+  // The VM's runner script pushes JSONL output to POST /api/v1/cli/output/
+  const waitResult = await waitForCompletion(ticketId, CHAT_MAX_WAIT_DURATION_MS);
+  console.log(`[ticket-executor] Chat: wait finished, status=${waitResult.status}, exitCode=${waitResult.exitCode}`);
 
-  while (Date.now() < deadline && !completed) {
-    await sleep(POLL_INTERVAL_MS);
+  // ── Commit + push changes made during chat ──────────────────────────
+  const [ghToken] = await db
+    .select()
+    .from(githubTokens)
+    .where(eq(githubTokens.userId, ownerId))
+    .limit(1);
 
-    let pollResult: PollResult;
-    try {
-      pollResult = await pollOutput(workspaceId, outputFile, offset, backgroundPid);
-    } catch (pollErr) {
-      console.warn(`[ticket-executor] Chat poll error:`, pollErr);
-      continue;
-    }
+  const githubToken = ghToken?.accessToken;
 
-    const { data, newOffset, alive } = pollResult;
+  let chatGhOwner: string | null = project!.repoOwner ?? null;
+  let chatGhRepo: string | null = project!.repoName ?? null;
+  const chatRepoUrl = project!.repoUrl ?? extractRepoUrl(project!.stack ?? "");
 
-    if (!data.trim()) {
-      if (!alive) break;
-      continue;
-    }
-
-    offset = newOffset;
-    allOutput += data;
-
-    const events = parseJsonlEvents(data);
-    console.log(`[ticket-executor] Chat: parsed ${events.length} events, types: [${events.map(e => e.type).join(', ')}], dataLen=${data.length}`);
-
-    // Stale session — retry without resume
-    if (isStaleSession(events) && sessionId) {
-      console.log(`[ticket-executor] Chat: stale session detected, retrying without resume`);
-      sessionId = undefined;
-      await db
-        .update(sandboxes)
-        .set({ cliSessionId: null, updatedAt: new Date() })
-        .where(eq(sandboxes.id, sandbox.id));
-
-      const retry = await startClaudeCli({
-        workspaceId,
-        prompt,
-        projectDir: projectDirName,
-        sessionId: undefined,
-        userId: ownerId,
-        envVars,
-      });
-      // IMPORTANT: use the NEW output file and pid from the retry
-      Object.assign({ outputFile: retry.outputFile, backgroundPid: retry.backgroundPid });
-      offset = 0;
-      allOutput = "";
-      continue;
-    }
-
-    // Log events to DB + WS (same as main executor)
-    for (const ev of events) {
-      if (ev.type === "assistant") {
-        for (const block of (ev as any).message?.content ?? []) {
-          if (block.type === "text" && block.text) {
-            console.log(`[ticket-executor] Chat: logging ai_response, len=${block.text.length}`);
-            await addLog(ticketId, block.text, "ai_response", ownerId);
-          } else if (block.type === "tool_use" && block.name) {
-            const toolMsg = formatToolUse(block.name, block.input ?? {});
-            await addLog(ticketId, toolMsg, "command", ownerId);
-          }
-        }
-      } else if (ev.type === "user") {
-        for (const block of (ev as any).message?.content ?? []) {
-          if (block.type === "tool_result" && block.content && block.content.length > 50) {
-            await addLog(ticketId, block.content.slice(0, 500), "command", ownerId);
-          }
-        }
-      } else if (ev.type === "result") {
-        // Result event — may contain final text
-        const result = ev as any;
-        if (result.result) {
-          console.log(`[ticket-executor] Chat: result event, text len=${result.result.length}`);
-          await addLog(ticketId, result.result, "ai_response", ownerId);
-        }
-      } else if (ev.type === "error") {
-        const errMsg = (ev as { type: "error"; error: string }).error;
-        console.error(`[ticket-executor] Chat CLI error event:`, errMsg);
-        await addLog(ticketId, `CLI error: ${errMsg}`, "command", ownerId);
+  if (!chatGhOwner || !chatGhRepo) {
+    if (chatRepoUrl) {
+      const ghMatch = chatRepoUrl.match(/github\.com\/([^/]+)\/([^/.]+)/);
+      if (ghMatch) {
+        chatGhOwner = ghMatch[1] ?? null;
+        chatGhRepo = ghMatch[2] ?? null;
       }
-    }
-
-    if (isStreamComplete(events) || data.includes("IMPLEMENTATION_STATUS:")) {
-      completed = true;
-    }
-
-    if (!alive) {
-      console.log(`[ticket-executor] Chat: CLI process no longer alive`);
-      break;
     }
   }
 
-  console.log(`[ticket-executor] Chat: poll loop ended, completed=${completed}, outputLength=${allOutput.length}`);
+  if (chatGhOwner && chatGhRepo && githubToken) {
+    const featureBranch = ticket.githubBranch ?? `feature/ticket-${ticketId}`;
+    try {
+      await addLog(ticketId, "Committing chat changes...", "command", ownerId);
+      const { sha } = await commitAndPush({
+        workspaceId,
+        projectDir: `${WORKING_DIR}/${projectDirName}`,
+        commitMessage: `update: ${ticket.name} (chat)`,
+        featureBranch,
+        repoUrl: `https://github.com/${chatGhOwner}/${chatGhRepo}.git`,
+        githubToken,
+      });
+
+      await db
+        .update(projectTickets)
+        .set({
+          githubBranch: featureBranch,
+          githubCommitSha: sha,
+          updatedAt: new Date(),
+        })
+        .where(eq(projectTickets.id, ticketId));
+
+      await addLog(ticketId, `Pushed commit ${sha.slice(0, 7)} to ${featureBranch}`, "command", ownerId);
+
+      // Merge feature branch → lfg-agent (direct push)
+      try {
+        const { sha: mergeSha } = await mergeToLfgAgent({
+          workspaceId: sandbox.magsWorkspaceId!,
+          projectDir: `${WORKING_DIR}/${projectDirName}`,
+          featureBranch,
+          repoUrl: `https://github.com/${chatGhOwner}/${chatGhRepo}.git`,
+          githubToken,
+        });
+        await db
+          .update(projectTickets)
+          .set({ githubMergeStatus: "merged", updatedAt: new Date() })
+          .where(eq(projectTickets.id, ticketId));
+        await addLog(ticketId, `Merged to lfg-agent (${mergeSha.slice(0, 7)})`, "command", ownerId);
+      } catch (mergeErr) {
+        console.warn(`[ticket-executor] Chat: merge to lfg-agent failed:`, mergeErr);
+        await addLog(ticketId, `Merge to lfg-agent failed: ${mergeErr}`, "command", ownerId);
+      }
+    } catch (err) {
+      // commitAndPush returns NO_CHANGES gracefully, so this is a real error
+      const errMsg = String(err);
+      if (!errMsg.includes("NO_CHANGES")) {
+        console.warn(`[ticket-executor] Chat: commit+push failed:`, err);
+        await addLog(ticketId, `Git commit failed: ${err}`, "command", ownerId);
+      }
+    }
+  }
+
+  // Save credentials back to DB after chat
+  await saveCredentialsFromVm(workspaceId, ownerId);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Wait for a ticket's execution to finish via the event bus.
+ * The VM pushes output to /api/v1/cli/output/ which emits
+ * ticket.execution_finished when done=true is received.
+ * Returns when the event fires or when timeout is reached.
+ */
+function waitForCompletion(
+  ticketId: string,
+  timeoutMs: number
+): Promise<{ status: "complete" | "failed" | "timeout"; exitCode?: number }> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      cleanup();
+      resolve({ status: "timeout" });
+    }, timeoutMs);
+
+    const handler = (event: any) => {
+      if (event.payload.ticketId !== ticketId) return;
+      cleanup();
+      resolve({
+        status: event.payload.exitCode === 0 ? "complete" : "failed",
+        exitCode: event.payload.exitCode,
+      });
+    };
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      bus.off("ticket.execution_finished", handler);
+    };
+
+    bus.on("ticket.execution_finished", handler);
+  });
+}
 
 async function findExistingSandbox(ticketId: string) {
   const result = await db
@@ -805,30 +853,29 @@ async function findExistingSandbox(ticketId: string) {
   return result[0] ?? null;
 }
 
-async function addLog(
-  ticketId: string,
-  message: string,
-  logType: "command" | "ai_response" | "user_message",
-  userId?: string
-) {
-  const [inserted] = await db.insert(ticketLogs).values({
-    ticketId,
-    logType,
-    command: message.slice(0, 2000),
-  }).returning();
+/**
+ * Try to refresh DB credentials from the auth sandbox.
+ * The auth sandbox may have auto-refreshed tokens that the DB doesn't have.
+ * This is a best-effort operation — if the auth sandbox is unavailable, we continue with DB creds.
+ */
+async function refreshCredentialsFromAuthSandbox(userId: string): Promise<void> {
+  try {
+    // Find the user's auth sandbox
+    const [authSandbox] = await db.select().from(sandboxes)
+      .where(and(eq(sandboxes.userId, userId), eq(sandboxes.workspaceType, "claude_auth")))
+      .limit(1);
 
-  // Push to frontend via WebSocket
-  if (userId) {
-    broadcastToUser(userId, {
-      type: "ticket_log",
-      ticketId,
-      log: {
-        id: inserted?.id,
-        type: logType,
-        message: message.slice(0, 2000),
-        createdAt: inserted?.createdAt ?? new Date().toISOString(),
-      },
-    });
+    if (!authSandbox?.magsWorkspaceId) return;
+
+    // Try to read fresh credentials from the auth sandbox
+    const { saveCredentialsFromVm: saveCreds } = await import("../services/claude-cli.ts");
+    const saved = await saveCreds(authSandbox.magsWorkspaceId, userId);
+    if (saved) {
+      console.log(`[ticket-executor] Refreshed credentials from auth sandbox ${authSandbox.magsWorkspaceId}`);
+    }
+  } catch (err) {
+    // Auth sandbox might be sleeping/unavailable — that's fine, continue with DB creds
+    console.log(`[ticket-executor] Could not refresh from auth sandbox: ${(err as Error).message?.slice(0, 100)}`);
   }
 }
 
@@ -843,29 +890,6 @@ async function markTicketFailed(ticketId: string, reason: string, userId?: strin
     .where(eq(projectTickets.id, ticketId));
 
   await addLog(ticketId, `Execution failed: ${reason}`, "command", userId);
-}
-
-/**
- * Format a tool_use block for log display, matching Django's approach.
- */
-function formatToolUse(name: string, input: Record<string, unknown>): string {
-  switch (name) {
-    case "Bash":
-      return `$ ${(input.command as string) ?? ""}`.slice(0, 500);
-    case "Read":
-      return `📄 Read: ${input.file_path ?? ""}`;
-    case "Write":
-      return `✏️ Write: ${input.file_path ?? ""}`;
-    case "Edit":
-      return `✏️ Edit: ${input.file_path ?? ""}`;
-    case "Grep":
-    case "Glob":
-      return `🔍 ${name}: ${input.pattern ?? ""}`;
-    case "TodoWrite":
-      return `📋 TodoWrite: updating tasks`;
-    default:
-      return `🔧 ${name}`;
-  }
 }
 
 function extractRepoUrl(stack: string): string | null {

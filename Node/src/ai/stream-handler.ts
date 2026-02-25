@@ -1,14 +1,16 @@
 import { streamText, stepCountIs } from "ai";
 import { db } from "../config/db.ts";
 import { messages, conversations, modelSelections, agentRoles } from "../db/schema/chat.ts";
-import { profiles, llmApiKeys } from "../db/schema/users.ts";
+import { llmApiKeys } from "../db/schema/users.ts";
 import { projects } from "../db/schema/projects.ts";
-import { eq, asc, desc } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { getModel, DEFAULT_MODEL_KEY } from "./provider.ts";
 import { toolsProduct, toolsTurbo } from "./tools/index.ts";
+import { createInstantTools } from "./tools/instant-tools.ts";
 import { setDocumentWsBroadcast, setTicketWsBroadcast } from "./tools/index.ts";
 import { setMiscWsBroadcast } from "./tools/index.ts";
 import { getProductSystemPrompt } from "./prompts/product.ts";
+import { getInstantSystemPrompt } from "./prompts/instant.ts";
 import { broadcastToUser } from "../ws/connection-manager.ts";
 import type { ServerWebSocket } from "bun";
 import type { WsData } from "../ws/types.ts";
@@ -78,19 +80,20 @@ export interface StreamRequest {
   conversationId?: string;
   projectId?: string;
   turboMode?: boolean;
+  instantMode?: boolean;
   userRole?: string;
   abortController: AbortController;
 }
 
 export async function handleStream(req: StreamRequest): Promise<{ conversationId: string }> {
-  const { ws, userId, userMessage, projectId, turboMode, abortController } = req;
+  const { ws, userId, userMessage, projectId, turboMode, instantMode, abortController } = req;
 
   // ── 1. Resolve or create conversation ───────────────────────────────────────
   let convId = req.conversationId;
   if (!convId) {
     const [conv] = await db
       .insert(conversations)
-      .values({ userId, projectId: projectId ?? null, title: userMessage.slice(0, 50) })
+      .values({ userId, projectId: projectId ?? null, title: (userMessage || "New conversation").slice(0, 50) })
       .returning();
     convId = conv!.id;
     // Notify client of new conversation
@@ -145,10 +148,7 @@ export async function handleStream(req: StreamRequest): Promise<{ conversationId
     .from(agentRoles)
     .where(eq(agentRoles.userId, userId));
 
-  const agentRole = role?.name ?? "product_analyst";
   const isTurbo = turboMode ?? role?.turboMode ?? false;
-
-  const tools = isTurbo ? toolsTurbo : toolsProduct;
 
   // Resolve the public URL projectId → internal projects.id so tools insert
   // records with the correct FK value (projectPrds.projectId, etc. all reference
@@ -162,7 +162,19 @@ export async function handleStream(req: StreamRequest): Promise<{ conversationId
     if (proj) internalProjectId = proj.id;
   }
 
-  const systemPrompt = getProductSystemPrompt({ userId, projectId: internalProjectId });
+  const tools = instantMode
+    ? createInstantTools({
+        userId,
+        conversationId: convId,
+        projectId: internalProjectId ?? undefined,
+      })
+    : isTurbo
+      ? toolsTurbo
+      : toolsProduct;
+
+  const systemPrompt = instantMode
+    ? getInstantSystemPrompt()
+    : getProductSystemPrompt({ userId, projectId: internalProjectId });
 
   // ── 6. Stream with AI SDK ────────────────────────────────────────────────────
   let fullResponse = "";
