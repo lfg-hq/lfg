@@ -15,7 +15,7 @@ import { broadcastToUser } from "../ws/connection-manager.ts";
 export async function addLog(
   ticketId: string,
   message: string,
-  logType: "command" | "ai_response" | "user_message" | "cli_error",
+  logType: "command" | "ai_response" | "user_message" | "cli_error" | "question",
   userId?: string
 ) {
   const [inserted] = await db.insert(ticketLogs).values({

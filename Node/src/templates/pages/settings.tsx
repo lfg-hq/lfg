@@ -250,6 +250,39 @@ export function SettingsPage({ user, apiKeys, claudeCode, github, activeSection 
       display: flex; align-items: center;
     }
     .llm-btn-remove:hover { background: rgba(239,68,68,0.2); }
+
+    /* ── OAuth flow elements ────────────────────────────── */
+    .cc-copy-btn {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: rgba(255,255,255,0.6);
+    }
+    .cc-copy-btn:hover { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.85); }
+    .cc-code-input {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: var(--text-color, #f0f0f0);
+    }
+    .cc-code-input:focus { border-color: #a78bfa; box-shadow: 0 0 0 2px rgba(139,92,246,0.15); }
+
+    /* ── Light theme overrides ──────────────────────────── */
+    [data-theme="light"] .settings-main { background: var(--body-bg, #f8fafc); }
+    [data-theme="light"] .settings-page-header { border-bottom-color: #e2e8f0; }
+    [data-theme="light"] .settings-nav { background: rgba(0,0,0,0.02); border-color: #e2e8f0; }
+    [data-theme="light"] .settings-nav-item { color: #64748b; }
+    [data-theme="light"] .settings-nav-item:hover { background: rgba(0,0,0,0.04); color: #1e293b; }
+    [data-theme="light"] .settings-nav-item.active { background: rgba(139,92,246,0.08); color: #7c3aed; }
+    [data-theme="light"] .llm-keys-table { background: #ffffff; border-color: #e2e8f0; }
+    [data-theme="light"] .llm-keys-row { border-bottom-color: #f1f5f9; }
+    [data-theme="light"] .llm-row-sub { color: #94a3b8; }
+    [data-theme="light"] .byok-desc { color: #64748b; }
+    [data-theme="light"] .toggle-slider { background: #e2e8f0; border-color: #cbd5e1; }
+    [data-theme="light"] .toggle-slider:before { background: #94a3b8; }
+    [data-theme="light"] .cc-copy-btn { background: #f1f5f9; border-color: #e2e8f0; color: #475569; }
+    [data-theme="light"] .cc-copy-btn:hover { background: #e2e8f0; color: #1e293b; }
+    [data-theme="light"] .cc-code-input { background: #ffffff; border-color: #e2e8f0; color: #1e293b; }
+    [data-theme="light"] .cc-code-input:focus { border-color: #a78bfa; }
+    [data-theme="light"] .cc-status-badge { background: #f1f5f9 !important; color: #64748b !important; border-color: #e2e8f0 !important; }
   </style>
 </head>
 <body data-user-id="${user.id}" data-user-name="${user.name}">
@@ -339,12 +372,8 @@ export function SettingsPage({ user, apiKeys, claudeCode, github, activeSection 
               <span style="font-size:.75rem;padding:.25rem .625rem;background:rgba(52,211,153,.1);color:#34d399;border:1px solid rgba(52,211,153,.25);border-radius:20px;">
                 <i class="fas fa-check-circle" style="margin-right:.25rem;"></i>Connected
               </span>
-            ` : claudeCode?.hasCredentials && !claudeCode?.authenticated ? html`
-              <span style="font-size:.75rem;padding:.25rem .625rem;background:rgba(239,68,68,.1);color:#f87171;border:1px solid rgba(239,68,68,.25);border-radius:20px;">
-                <i class="fas fa-exclamation-triangle" style="margin-right:.25rem;"></i>Disconnected
-              </span>
             ` : html`
-              <span style="font-size:.75rem;padding:.25rem .625rem;background:rgba(255,255,255,.06);color:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.1);border-radius:20px;">
+              <span class="cc-status-badge" style="font-size:.75rem;padding:.25rem .625rem;background:rgba(255,255,255,.06);color:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.1);border-radius:20px;">
                 Not connected
               </span>
             `}
@@ -358,22 +387,11 @@ export function SettingsPage({ user, apiKeys, claudeCode, github, activeSection 
                 <div class="byok-desc">
                   ${claudeCode?.hasCredentials && claudeCode?.authenticated
                     ? "Your Claude credentials are stored. Ticket execution is enabled."
-                    : claudeCode?.hasCredentials && !claudeCode?.authenticated
-                    ? "Claude CLI session expired or disconnected. Please reconnect to resume ticket execution."
                     : "Connect your Claude account to enable AI-powered ticket execution."}
                 </div>
               </div>
               <div style="display:flex;gap:.5rem;flex-shrink:0;">
                 ${claudeCode?.hasCredentials && claudeCode?.authenticated ? html`
-                  <button id="cc-disconnect-btn" onclick="claudeCodeDisconnect()"
-                    class="llm-btn-remove" style="border-radius:7px;border:1px solid rgba(239,68,68,0.3);padding:.45rem .875rem;">
-                    <i class="fas fa-unlink"></i>&nbsp; Disconnect
-                  </button>
-                ` : claudeCode?.hasCredentials && !claudeCode?.authenticated ? html`
-                  <button id="cc-connect-btn" onclick="claudeCodeStartAuth()"
-                    class="llm-btn-save" style="border-radius:7px;padding:.45rem .875rem;">
-                    <i class="fas fa-plug"></i>&nbsp; Reconnect Claude Code
-                  </button>
                   <button id="cc-disconnect-btn" onclick="claudeCodeDisconnect()"
                     class="llm-btn-remove" style="border-radius:7px;border:1px solid rgba(239,68,68,0.3);padding:.45rem .875rem;">
                     <i class="fas fa-unlink"></i>&nbsp; Disconnect
@@ -388,13 +406,13 @@ export function SettingsPage({ user, apiKeys, claudeCode, github, activeSection 
             </div>
 
             <!-- OAuth Flow Panel (shown dynamically) -->
-            <div id="cc-flow-panel" style="display:none;border-top:1px solid rgba(255,255,255,.07);padding-top:1rem;">
+            <div id="cc-flow-panel" style="display:none;border-top:1px solid var(--border-color, rgba(255,255,255,.07));padding-top:1rem;">
 
               <!-- Step 1: Provisioning -->
               <div id="cc-step-provisioning" style="display:none;">
-                <div style="display:flex;align-items:center;gap:.75rem;color:rgba(255,255,255,.6);font-size:.875rem;">
+                <div style="display:flex;align-items:center;gap:.75rem;color:var(--text-secondary, rgba(255,255,255,.6));font-size:.875rem;">
                   <div class="cc-spinner"></div>
-                  <span id="cc-provisioning-msg">Creating secure VM and installing Claude CLI…</span>
+                  <span id="cc-provisioning-msg">Preparing secure environment…</span>
                 </div>
               </div>
 
@@ -404,16 +422,16 @@ export function SettingsPage({ user, apiKeys, claudeCode, github, activeSection 
                 <div style="display:flex;gap:.75rem;margin-bottom:1rem;align-items:flex-start;">
                   <div style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:rgba(139,92,246,.25);border:1px solid rgba(139,92,246,.5);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:#c4b5fd;margin-top:1px;">1</div>
                   <div style="flex:1;min-width:0;">
-                    <p style="font-size:.875rem;color:rgba(255,255,255,.75);margin:0 0 .5rem;">Open this link in your browser and sign in to Claude:</p>
+                    <p style="font-size:.875rem;color:var(--text-secondary, rgba(255,255,255,.75));margin:0 0 .5rem;">Open this link in your browser and sign in to Claude:</p>
                     <div style="display:flex;gap:.5rem;align-items:center;">
-                      <div style="flex:1;min-width:0;display:flex;align-items:center;gap:.625rem;padding:.45rem .75rem;background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.25);border-radius:8px;overflow:hidden;">
+                      <div class="cc-oauth-url-box" style="flex:1;min-width:0;display:flex;align-items:center;gap:.625rem;padding:.45rem .75rem;background:rgba(139,92,246,.08);border:1px solid rgba(139,92,246,.25);border-radius:8px;overflow:hidden;">
                         <i class="fas fa-link" style="color:#a78bfa;font-size:.7rem;flex-shrink:0;"></i>
                         <a id="cc-oauth-url" href="#" target="_blank" rel="noopener"
-                          style="flex:1;min-width:0;color:#c4b5fd;font-size:.8rem;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">
+                          style="flex:1;min-width:0;color:var(--primary-color, #c4b5fd);font-size:.8rem;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">
                         </a>
                       </div>
                       <button onclick="copyOAuthUrl()" id="cc-copy-btn"
-                        style="flex-shrink:0;padding:.45rem .75rem;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:rgba(255,255,255,.6);cursor:pointer;font-size:.8rem;white-space:nowrap;transition:all .15s;">
+                        class="cc-copy-btn" style="flex-shrink:0;padding:.45rem .75rem;border-radius:8px;cursor:pointer;font-size:.8rem;white-space:nowrap;transition:all .15s;">
                         <i class="fas fa-copy"></i> Copy
                       </button>
                     </div>
@@ -424,10 +442,10 @@ export function SettingsPage({ user, apiKeys, claudeCode, github, activeSection 
                 <div style="display:flex;gap:.75rem;align-items:flex-start;">
                   <div style="flex-shrink:0;width:22px;height:22px;border-radius:50%;background:rgba(139,92,246,.25);border:1px solid rgba(139,92,246,.5);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:#c4b5fd;margin-top:1px;">2</div>
                   <div style="flex:1;min-width:0;">
-                    <p style="font-size:.875rem;color:rgba(255,255,255,.75);margin:0 0 .5rem;">Paste the authorization code you receive:</p>
+                    <p style="font-size:.875rem;color:var(--text-secondary, rgba(255,255,255,.75));margin:0 0 .5rem;">Paste the authorization code you receive:</p>
                     <div style="display:flex;gap:.5rem;">
                       <input id="cc-code-input" type="text" placeholder="Paste authorization code…"
-                        style="flex:1;min-width:0;padding:.45rem .75rem;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:8px;color:var(--text-color,#f0f0f0);font-size:.875rem;outline:none;"
+                        class="cc-code-input" style="flex:1;min-width:0;padding:.45rem .75rem;border-radius:8px;font-size:.875rem;outline:none;"
                         onkeydown="if(event.key==='Enter') claudeCodeSubmitCode()" />
                       <button onclick="claudeCodeSubmitCode()" id="cc-submit-btn"
                         class="llm-btn-save" style="flex-shrink:0;border-radius:8px;padding:.45rem 1rem;white-space:nowrap;">
@@ -441,7 +459,7 @@ export function SettingsPage({ user, apiKeys, claudeCode, github, activeSection 
 
               <!-- Step 3: Verifying -->
               <div id="cc-step-verifying" style="display:none;">
-                <div style="display:flex;align-items:center;gap:.75rem;color:rgba(255,255,255,.6);font-size:.875rem;">
+                <div style="display:flex;align-items:center;gap:.75rem;color:var(--text-secondary, rgba(255,255,255,.6));font-size:.875rem;">
                   <div class="cc-spinner"></div>
                   <span>Verifying and saving credentials…</span>
                 </div>

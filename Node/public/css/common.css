@@ -39,6 +39,24 @@
     --font-size-2xl: 1.5rem;
 }
 
+/* Light theme variable overrides */
+[data-theme="light"] {
+    --text-color: #1e293b;
+    --text-secondary: #64748b;
+    --text-light: #64748b;
+    --text-muted: #94a3b8;
+    --light-bg: #f1f5f9;
+    --border-color: #e2e8f0;
+    --card-bg: #ffffff;
+    --body-bg: #f8fafc;
+    --header-bg: #ffffff;
+    --footer-bg: #ffffff;
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.1);
+    --shadow-glow: 0 0 20px rgba(139, 92, 246, 0.08);
+}
+
 body {
     background-color: var(--body-bg);
     color: var(--text-color);

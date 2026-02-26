@@ -12,7 +12,8 @@ export type TicketEventType =
   | "ticket.input_requested"
   | "ticket.chat_message"
   | "ticket.execution_started"
-  | "ticket.execution_finished";
+  | "ticket.execution_finished"
+  | "ticket.needs_attention";
 
 export type DocumentEventType =
   | "document.created"      // PRD or implementation created
@@ -108,6 +109,7 @@ export type AppEvent =
   | { type: "ticket.chat_message"; payload: { ticketId: string; message: string; sender: string } }
   | { type: "ticket.execution_started"; payload: { ticketId: string; sandboxId: string } }
   | { type: "ticket.execution_finished"; payload: { ticketId: string; status: "complete" | "failed"; durationMs?: number; exitCode?: number } }
+  | { type: "ticket.needs_attention"; payload: { ticketId: string; reason: string; question?: string } }
   | { type: "document.created"; payload: DocumentCreatedPayload }
   | { type: "document.updated"; payload: DocumentUpdatedPayload }
   | { type: "document.file_created"; payload: DocumentCreatedPayload }

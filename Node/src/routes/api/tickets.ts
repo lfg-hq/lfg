@@ -439,6 +439,13 @@ ticketsApi.post("/:projectId/tickets/:ticketId/chat", async (c) => {
   const body = await c.req.json<{ message: string }>();
   if (!body.message?.trim()) return c.json({ error: "message required" }, 400);
 
+  // Check if the agent is waiting for input (latest log is a "question")
+  const [latestLog] = await db.select({ logType: ticketLogs.logType })
+    .from(ticketLogs)
+    .where(eq(ticketLogs.ticketId, ticketId!))
+    .orderBy(desc(ticketLogs.createdAt))
+    .limit(1);
+
   // Log user message
   await db.insert(ticketLogs).values({
     ticketId,
@@ -446,9 +453,21 @@ ticketsApi.post("/:projectId/tickets/:ticketId/chat", async (c) => {
     command: body.message,
   });
 
-  // Dispatch to executor
-  const { bus } = await import("../../events/bus.ts");
-  bus.emit({ type: "ticket.chat_message", payload: { ticketId, message: body.message, sender: "user" } });
+  if (latestLog?.logType === "question") {
+    // Agent is waiting for input — write INPUT_RESPONSE marker to notes
+    // so the /request-input/ long-poll picks it up
+    const marker = `INPUT_RESPONSE:${ticketId}:${body.message}`;
+    const [ticket] = await db.select({ notes: projectTickets.notes })
+      .from(projectTickets).where(eq(projectTickets.id, ticketId!)).limit(1);
+    await db.update(projectTickets).set({
+      notes: (ticket?.notes ?? "") + "\n" + marker,
+      updatedAt: new Date(),
+    }).where(eq(projectTickets.id, ticketId!));
+  } else {
+    // Normal chat — dispatch to executor for new/resumed CLI session
+    const { bus } = await import("../../events/bus.ts");
+    bus.emit({ type: "ticket.chat_message", payload: { ticketId, message: body.message, sender: "user" } });
+  }
 
   return c.json({ ok: true });
 });

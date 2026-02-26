@@ -25,7 +25,7 @@ export {
   setTicketWsBroadcast,
 } from "./ticket-tools.ts";
 
-export { getProjectEnvVars, registerRequiredEnvVars, setEnvVar } from "./env-tools.ts";
+export { getProjectEnvVars, registerRequiredEnvVars, setEnvVar, provisionPostgresDb } from "./env-tools.ts";
 
 export {
   broadcastToUser,
@@ -35,6 +35,8 @@ export {
 
 export { createInstantTools } from "./instant-tools.ts";
 
+export { queryCodebase } from "./codebase-tools.ts";
+
 // ── tools_product: Full product analyst toolset ───────────────────────────────
 import { getProjectDashboard, setProjectStack, captureProjectName } from "./project-tools.ts";
 import { streamDocumentContent, getFileList, getFileContent, updateFileContent } from "./document-tools.ts";
@@ -43,8 +45,9 @@ import {
   updateTicket, updateTicketDetails, updateAllTickets,
   getNextTicket, scheduleTickets, retryTicket, sendTicketMessage, queueTicketExecution,
 } from "./ticket-tools.ts";
-import { getProjectEnvVars, registerRequiredEnvVars, setEnvVar } from "./env-tools.ts";
+import { getProjectEnvVars, registerRequiredEnvVars, setEnvVar, provisionPostgresDb } from "./env-tools.ts";
 import { broadcastToUser, lookupTechnologySpecs } from "./misc-tools.ts";
+import { queryCodebase } from "./codebase-tools.ts";
 
 export const toolsProduct = {
   getProjectDashboard,
@@ -68,8 +71,10 @@ export const toolsProduct = {
   getProjectEnvVars,
   registerRequiredEnvVars,
   setEnvVar,
+  provisionPostgresDb,
   lookupTechnologySpecs,
   broadcastToUser,
+  queryCodebase,
 };
 
 // ── tools_turbo: Lightweight subset for quick interactions ────────────────────

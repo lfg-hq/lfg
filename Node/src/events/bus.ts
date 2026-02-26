@@ -66,4 +66,5 @@ type FlatEvent =
   | { type: "ticket.execution_started"; ticketId: string; sandboxId: string }
   | { type: "ticket.execution_finished"; ticketId: string; status: "complete" | "failed"; durationMs?: number; exitCode?: number }
   | { type: "ticket.queued"; ticketId: string; projectId: string; notes?: string }
-  | { type: "ticket.commented"; ticketId: string; projectId: string; message: string; logType: string };
+  | { type: "ticket.commented"; ticketId: string; projectId: string; message: string; logType: string }
+  | { type: "ticket.needs_attention"; ticketId: string; reason: string; question?: string };

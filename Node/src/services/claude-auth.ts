@@ -116,17 +116,17 @@ export async function checkAuthStatus(workspaceName: string): Promise<AuthStatus
       return { authenticated: true, message: "Claude Code is authenticated" };
     }
 
+    // Explicit auth errors — check these BEFORE timeout fallback
+    if (out.includes("not logged in") || out.includes("authenticate") ||
+        out.includes("oauth") || out.includes("expired") || out.includes("please run /login") ||
+        out.includes("401") || out.includes("authentication_error")) {
+      await execOnWorkspace(workspaceName, "rm -f ~/.claude/.credentials.json /home/claudeuser/.claude/.credentials.json", { timeout: 10_000 }).catch(() => {});
+      return { authenticated: false, message: "Token expired — please reconnect", tokenExpired: true };
+    }
+
     // Timeout or killed — VM is slow but creds exist, assume authenticated
     if (out.includes("killed") || out.includes("timed out") || [137, 124].includes(r.exitCode)) {
       return { authenticated: true, message: "Credentials found (verification skipped due to timeout)" };
-    }
-
-    // Explicit auth errors
-    if (out.includes("not logged in") || out.includes("authenticate") ||
-        out.includes("oauth") || out.includes("expired") || out.includes("please run /login")) {
-      // Remove stale credentials
-      await execOnWorkspace(workspaceName, "rm -f ~/.claude/.credentials.json", { timeout: 10_000 }).catch(() => {});
-      return { authenticated: false, message: "Token expired — please reconnect", tokenExpired: true };
     }
 
     // Non-zero but no explicit auth error — assume ok (transient issue)
@@ -149,12 +149,39 @@ export interface StartAuthResult {
  * Start the Claude OAuth flow on an existing VM.
  * Sets up expect script, runs it in background, polls for the OAuth URL.
  */
-export async function startClaudeAuth(workspaceName: string): Promise<StartAuthResult> {
-  // Check if already authenticated
-  const authStatus = await checkAuthStatus(workspaceName);
-  if (authStatus.authenticated) {
-    return { status: "already_authenticated", message: "Claude Code is already authenticated" };
+export async function startClaudeAuth(workspaceName: string, opts?: { skipCredCheck?: boolean }): Promise<StartAuthResult> {
+  // Quick check: if credentials file exists with a token, test it strictly
+  // Skip if the caller already cleared stale creds (saves ~40s)
+  if (!opts?.skipCredCheck) {
+    try {
+      const quickCheck = await execOnWorkspace(workspaceName,
+        `if [ -f /root/.claude/.credentials.json ] && grep -q "accessToken" /root/.claude/.credentials.json 2>/dev/null; then echo HAS_CREDS; else echo NO_CREDS; fi`,
+        { timeout: 10_000 }
+      );
+      if (quickCheck.output.includes("HAS_CREDS")) {
+        // Test if it actually works
+        const test = await execOnWorkspace(workspaceName,
+          `export HOME=/root; export PATH=/root/node/current/bin:/root/.npm-global/bin:$PATH; claude -p "return hello" --max-turns 1 2>&1 | head -20`,
+          { timeout: 10_000 }
+        );
+        const testOut = test.output.toLowerCase();
+        if (test.exitCode === 0 && testOut.includes("hello") && !testOut.includes("error") && !testOut.includes("expired")) {
+          return { status: "already_authenticated", message: "Claude Code is already authenticated" };
+        }
+        // Not working — clear stale creds
+        await execOnWorkspace(workspaceName,
+          "rm -f /root/.claude/.credentials.json /home/claudeuser/.claude/.credentials.json 2>/dev/null; echo CLEARED",
+          { timeout: 10_000 }
+        ).catch(() => {});
+      }
+    } catch {
+      // VM unresponsive — proceed with auth flow anyway
+    }
   }
+
+  const t0 = Date.now();
+  const log = (msg: string) => console.log(`[startClaudeAuth +${Date.now() - t0}ms] ${msg}`);
+  log(`workspace=${workspaceName}, skipCredCheck=${!!opts?.skipCredCheck}`);
 
   // Pre-compute base64 of wrapper + expect scripts.
   // Using template literals: $var without {} is just literal text in JS — safe for Tcl variables.
@@ -258,6 +285,7 @@ expect eof
   const expectB64 = Buffer.from(expectScript).toString("base64");
 
   // Setup: install expect, write wrapper + expect scripts via base64 (no heredocs over SSH)
+  log("running setup (expect + wrapper scripts)...");
   const setup = await execOnWorkspace(workspaceName,
     `[ -f /etc/profile ] && . /etc/profile; [ -f ~/.profile ] && . ~/.profile; [ -f ~/.bashrc ] && . ~/.bashrc; ` +
     `rm -f /tmp/claude_url.txt /tmp/claude_code.txt /tmp/claude_status.txt /tmp/claude_auth.exp; ` +
@@ -270,6 +298,7 @@ expect eof
     { timeout: 60_000 }
   );
 
+  log(`setup result: exit=${setup.exitCode}, output="${setup.output.slice(0, 300)}"`);
   if (setup.output.includes("EXPECT_INSTALL_FAILED")) {
     return { status: "error", error: "Failed to install expect" };
   }
@@ -278,17 +307,20 @@ expect eof
   }
 
   // Start expect in background (single-line to avoid SSH exec newline issues)
+  log("starting expect in background...");
   const bg = await execOnWorkspace(workspaceName,
     `[ -f /etc/profile ] && . /etc/profile; [ -f ~/.profile ] && . ~/.profile; export PATH=/root/node/current/bin:/root/.npm-global/bin:$PATH; nohup expect /tmp/claude_auth.exp > /tmp/claude_auth.log 2>&1 & echo "BG_PID=$!"`,
     { timeout: 30_000 }
   );
 
+  log(`expect bg result: exit=${bg.exitCode}, output="${bg.output.slice(0, 200)}"`);
   if (!bg.output.includes("BG_PID=")) {
     return { status: "error", error: "Failed to start auth process" };
   }
 
   // Poll for URL (up to 90s, restart expect up to 3 times)
   let expectRestarts = 0;
+  log("polling for OAuth URL (up to 90s)...");
   for (let i = 0; i < 90; i++) {
     await sleep(1000);
 
@@ -325,6 +357,10 @@ pgrep -x expect >/dev/null 2>&1 || echo NO_EXPECT_RUNNING
       { timeout: 10_000 }
     ).catch(() => ({ output: "WAITING", exitCode: -1, stderr: "" }));
 
+    if (i % 5 === 0 || check.output.includes("URL_FOUND") || check.output.includes("STATUS_FOUND") || check.output.includes("NO_EXPECT")) {
+      log(`poll #${i}: "${check.output.slice(0, 150).replace(/\n/g, "\\n")}"`);
+    }
+
     if (check.output.includes("URL_FOUND")) {
       const lines = check.output.split("\n");
       for (const line of lines) {
@@ -339,12 +375,19 @@ pgrep -x expect >/dev/null 2>&1 || echo NO_EXPECT_RUNNING
       if (check.output.includes("ALREADY_AUTH") || check.output.includes("SUCCESS")) {
         return { status: "already_authenticated", message: "Already authenticated" };
       }
+      // Dump the auth log to understand what happened
+      const authLog = await execOnWorkspace(workspaceName,
+        "cat /tmp/claude_auth.log 2>/dev/null | tail -50",
+        { timeout: 5_000 }
+      ).catch(() => ({ output: "(could not read log)", exitCode: -1, stderr: "" }));
+      log(`STATUS=ERROR, auth log tail:\n${authLog.output.slice(0, 500)}`);
       return { status: "error", error: "Authentication error" };
     }
 
     // Restart expect if it died
     if (check.output.includes("NO_EXPECT_RUNNING") && expectRestarts < 3) {
       expectRestarts++;
+      log(`expect died, restarting (attempt ${expectRestarts}/3)...`);
       await execOnWorkspace(workspaceName,
         `pkill -9 claude 2>/dev/null || true; pkill -9 expect 2>/dev/null || true; rm -f /tmp/claude_auth.log; sleep 2; [ -f /etc/profile ] && . /etc/profile; export PATH=/root/node/current/bin:/root/.npm-global/bin:$PATH; nohup expect /tmp/claude_auth.exp > /tmp/claude_auth.log 2>&1 & echo RESTARTED`,
         { timeout: 30_000 }
@@ -353,6 +396,7 @@ pgrep -x expect >/dev/null 2>&1 || echo NO_EXPECT_RUNNING
     }
   }
 
+  log("TIMEOUT: gave up waiting for OAuth URL after 90 polls");
   return { status: "error", error: "Timeout waiting for OAuth URL" };
 }
 
@@ -372,12 +416,17 @@ export async function submitAuthCode(
   workspaceName: string,
   authCode: string
 ): Promise<SubmitCodeResult> {
+  const t0 = Date.now();
+  const log = (msg: string) => console.log(`[submitAuthCode +${Date.now() - t0}ms] ${msg}`);
+
   // Base64-encode the auth code to avoid shell quoting issues with special chars (#, =, _, etc.)
   const codeB64 = Buffer.from(authCode).toString("base64");
+  log(`writing code to VM (${authCode.length} chars)...`);
   const write = await execOnWorkspace(workspaceName,
     `echo ${codeB64} | base64 -d > /tmp/claude_code.txt && echo CODE_WRITTEN`,
     { timeout: 30_000 }
   );
+  log(`write result: ${write.output.slice(0, 100)}`);
 
   if (!write.output.includes("CODE_WRITTEN")) {
     return { status: "error", error: "Failed to write auth code" };
@@ -387,21 +436,39 @@ export async function submitAuthCode(
   for (let i = 0; i < 120; i++) {
     await sleep(1000);
 
-    const check = await execOnWorkspace(workspaceName, `
+    const pollScript = `
 if [ -f /tmp/claude_status.txt ]; then
     echo "STATUS_FOUND"
     cat /tmp/claude_status.txt
 else
     echo "WAITING"
     pgrep -x expect >/dev/null 2>&1 && echo "EXPECT_RUNNING" || echo "EXPECT_DEAD"
+    if [ -f /tmp/claude_auth.log ]; then
+        echo "LOG_TAIL:"
+        tail -5 /tmp/claude_auth.log 2>/dev/null
+    fi
 fi
-`, { timeout: 10_000 }).catch(() => ({ output: "WAITING", exitCode: -1, stderr: "" }));
+`;
+    const check = await execOnWorkspace(workspaceName,
+      b64script(pollScript),
+      { timeout: 10_000 }
+    ).catch(() => ({ output: "WAITING", exitCode: -1, stderr: "" }));
+
+    if (i % 5 === 0 || !check.output.includes("WAITING")) {
+      log(`poll #${i}: "${check.output.slice(0, 300).replace(/\n/g, "\\n")}"`);
+    }
 
     if (check.output.includes("STATUS_FOUND")) {
       if (check.output.includes("SUCCESS") || check.output.includes("ALREADY_AUTH")) {
         return { status: "success", message: "Authenticated successfully" };
       }
       if (check.output.includes("ERROR")) {
+        // Dump auth log for debugging
+        const authLog = await execOnWorkspace(workspaceName,
+          "tail -30 /tmp/claude_auth.log 2>/dev/null",
+          { timeout: 5_000 }
+        ).catch(() => ({ output: "(unreadable)", exitCode: -1, stderr: "" }));
+        log(`STATUS=ERROR, auth log:\n${authLog.output.slice(0, 500)}`);
         return { status: "error", error: "Authentication failed — code may be invalid or expired" };
       }
       if (check.output.includes("TIMEOUT")) {
@@ -410,10 +477,16 @@ fi
     }
 
     if (check.output.includes("EXPECT_DEAD")) {
+      const authLog = await execOnWorkspace(workspaceName,
+        "tail -30 /tmp/claude_auth.log 2>/dev/null",
+        { timeout: 5_000 }
+      ).catch(() => ({ output: "(unreadable)", exitCode: -1, stderr: "" }));
+      log(`EXPECT_DEAD, auth log:\n${authLog.output.slice(0, 500)}`);
       return { status: "error", error: "Authentication process died. Please start again." };
     }
   }
 
+  log("TIMEOUT after 120 polls");
   return { status: "error", error: "Timeout waiting for authentication result" };
 }
 

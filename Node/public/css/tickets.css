@@ -2158,6 +2158,57 @@
     font-size: 0.6875rem;
 }
 
+/* ── Light theme overrides ────────────────────────────── */
+
+[data-theme="light"] .kanban-column {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
+
+[data-theme="light"] .kanban-card {
+    background: #ffffff;
+    border-color: #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .kanban-card:hover {
+    background: #ffffff;
+    border-color: #cbd5e1;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .kanban-card-title {
+    color: #1e293b;
+}
+
+[data-theme="light"] .stage-name {
+    color: #334155;
+}
+
+[data-theme="light"] .ticket-count {
+    background: #e2e8f0;
+    color: #475569;
+}
+
+[data-theme="light"] .kanban-column-body.drag-over {
+    background: rgba(99, 102, 241, 0.08);
+    border-color: rgba(99, 102, 241, 0.4);
+}
+
+[data-theme="light"] .kanban-edit-btn {
+    background: rgba(0, 0, 0, 0.04);
+    color: #64748b;
+}
+
+[data-theme="light"] .kanban-edit-btn:hover {
+    background: rgba(0, 0, 0, 0.08);
+    color: #334155;
+}
+
+[data-theme="light"] .kanban-card-queue {
+    border-top-color: #e2e8f0;
+}
+
 /* ============================================
    GIT TAB STYLES
    ============================================ */
@@ -3424,4 +3475,157 @@
 
 .git-status-banner i {
     margin-right: 0.375rem;
+}
+
+/* ── Question log (action required) ───────────────────────────────── */
+.log-entry.log-question {
+    border-left: 3px solid #f59e0b;
+    background: rgba(245, 158, 11, 0.06);
+    margin: 0.75rem 0;
+    padding: 0.75rem 1rem;
+    border-radius: 0 8px 8px 0;
+}
+.log-question-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.log-question-content {
+    color: #fef3c7;
+    font-size: 0.875rem;
+    line-height: 1.65;
+    white-space: pre-wrap;
+}
+
+/* ============================================
+   LIGHT THEME – GLOBAL OVERRIDES
+   ============================================ */
+
+[data-theme="light"] .tickets-filters {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
+
+[data-theme="light"] .filter-search {
+    background-color: #ffffff;
+    border-color: #d1d5db;
+    color: #1e293b;
+}
+
+[data-theme="light"] .filter-search:focus {
+    background-color: #ffffff;
+    border-color: var(--primary-color);
+}
+
+[data-theme="light"] .filter-select {
+    background-color: #ffffff;
+    border-color: #d1d5db;
+    color: #1e293b;
+}
+
+[data-theme="light"] .filter-select:hover {
+    background-color: #f1f5f9;
+}
+
+[data-theme="light"] .execution-mode-toggle {
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+}
+
+[data-theme="light"] .mode-btn {
+    color: #475569;
+}
+
+[data-theme="light"] .mode-btn.active {
+    background: #ffffff;
+    color: #1e293b;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Drawer */
+[data-theme="light"] .drawer-overlay {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="light"] .ticket-drawer {
+    background: #ffffff;
+    border-left-color: #e2e8f0;
+}
+
+[data-theme="light"] .drawer-header {
+    border-bottom-color: #e2e8f0;
+}
+
+[data-theme="light"] .drawer-tabs {
+    border-bottom-color: #e2e8f0;
+}
+
+[data-theme="light"] .drawer-tab {
+    color: #64748b;
+}
+
+[data-theme="light"] .drawer-tab:hover {
+    color: #334155;
+    background: #f1f5f9;
+}
+
+[data-theme="light"] .drawer-tab.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+
+/* Actions log */
+[data-theme="light"] .log-entry {
+    border-left-color: #d1d5db;
+    background: #f8fafc;
+}
+
+[data-theme="light"] .log-entry.log-ai {
+    border-left-color: var(--primary-color);
+    background: rgba(139, 92, 246, 0.04);
+}
+
+[data-theme="light"] .log-entry.log-question {
+    background: rgba(245, 158, 11, 0.06);
+}
+
+[data-theme="light"] .log-question-label {
+    background: rgba(245, 158, 11, 0.12);
+    color: #b45309;
+}
+
+[data-theme="light"] .log-question-content {
+    color: #92400e;
+}
+
+/* Chat input area */
+[data-theme="light"] .chat-input-area {
+    background: #f8fafc;
+    border-top-color: #e2e8f0;
+}
+
+[data-theme="light"] .chat-input-area input,
+[data-theme="light"] .chat-input-area textarea {
+    background: #ffffff;
+    border-color: #d1d5db;
+    color: #1e293b;
+}
+
+/* Detail fields */
+[data-theme="light"] .detail-field {
+    background: #f8fafc;
+    border-color: #e2e8f0;
+}
+
+[data-theme="light"] .detail-label {
+    color: #64748b;
+}
+
+[data-theme="light"] .detail-value {
+    color: #1e293b;
 }

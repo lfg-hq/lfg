@@ -17,10 +17,11 @@
  */
 
 import { db } from "../config/db.ts";
-import { projectTickets, projectTodoLists } from "../db/schema/tickets.ts";
-import { projects } from "../db/schema/projects.ts";
+import { projectTickets, projectTodoLists, ticketStages } from "../db/schema/tickets.ts";
+import { projects, projectEnvironmentVariables } from "../db/schema/projects.ts";
 import { profiles, githubTokens } from "../db/schema/users.ts";
 import { sandboxes } from "../db/schema/sandbox.ts";
+import { decrypt } from "../ai/tools/env-tools.ts";
 import { bus, emit } from "../events/bus.ts";
 import {
   newWorkspace,
@@ -46,6 +47,19 @@ import {
 import { addLog } from "../services/ticket-logs.ts";
 import { broadcastToUser } from "../ws/connection-manager.ts";
 import { eq, and } from "drizzle-orm";
+
+/** Find a stage by name for a project and move the ticket to it. */
+async function moveTicketToStage(ticketId: string, projectId: string, stageName: string): Promise<string | null> {
+  const [stage] = await db
+    .select({ id: ticketStages.id })
+    .from(ticketStages)
+    .where(and(eq(ticketStages.projectId, projectId), eq(ticketStages.name, stageName)))
+    .limit(1);
+  if (stage) {
+    await db.update(projectTickets).set({ stageId: stage.id, updatedAt: new Date() }).where(eq(projectTickets.id, ticketId));
+  }
+  return stage?.id ?? null;
+}
 
 const CALLBACK_BASE_URL = process.env.APP_URL ?? "http://localhost:3000";
 const MAX_WAIT_DURATION_MS = 45 * 60 * 1000; // 45 minutes
@@ -145,7 +159,8 @@ async function executeTicket(ticketId: string): Promise<void> {
     .from(projectTodoLists)
     .where(eq(projectTodoLists.ticketId, ticketId));
 
-  // Mark ticket as executing
+  // Mark ticket as executing and move to "In Progress" stage
+  await moveTicketToStage(ticketId, project.id, "In Progress");
   await db
     .update(projectTickets)
     .set({ status: "in_progress", queueStatus: "executing", updatedAt: new Date() })
@@ -414,6 +429,15 @@ echo "BRANCH_CREATED"
   // ── Step 5: Build prompt + env vars ────────────────────────────────
   console.log(`[ticket-executor] Step 5: Building prompt`);
 
+  // Load project environment variables early so they're available for prompt + runner
+  const projectEnvRows = await db
+    .select({ key: projectEnvironmentVariables.key, encryptedValue: projectEnvironmentVariables.encryptedValue, description: projectEnvironmentVariables.description })
+    .from(projectEnvironmentVariables)
+    .where(and(
+      eq(projectEnvironmentVariables.projectId, project.id),
+      eq(projectEnvironmentVariables.hasValue, true)
+    ));
+
   // Build git error context
   let gitErrorContext = "";
   if (gitSetupError && gitSetupError !== "No GitHub repo configured or missing token") {
@@ -476,6 +500,7 @@ Before implementing, fix the git issue:
         description: t.description,
         status: t.status,
       })),
+      envVars: projectEnvRows.map((r) => ({ key: r.key, description: r.description ?? "" })),
     });
 
     // Append git error context and project path info
@@ -490,6 +515,15 @@ Before implementing, fix the git issue:
     LFG_TICKET_ID: ticket.id,
     LFG_PROJECT_ID: project.id,
   };
+
+  // Merge project env vars into runner env
+  for (const row of projectEnvRows) {
+    envVars[row.key] = decrypt(row.encryptedValue);
+  }
+
+  if (projectEnvRows.length > 0) {
+    console.log(`[ticket-executor] Injected ${projectEnvRows.length} project env vars: ${projectEnvRows.map(r => r.key).join(", ")}`);
+  }
 
   // ── Step 6: Start Claude CLI ──────────────────────────────────────
   console.log(`[ticket-executor] Step 6: Starting Claude CLI`);
@@ -602,6 +636,7 @@ Before implementing, fix the git issue:
   }
 
   if (implementationStatus === "complete") {
+    const reviewStageId = await moveTicketToStage(ticketId, project.id, "In Review");
     await db
       .update(projectTickets)
       .set({
@@ -613,7 +648,7 @@ Before implementing, fix the git issue:
       })
       .where(eq(projectTickets.id, ticketId));
     await addLog(ticketId, "Ticket implementation complete!", "command", ownerId);
-    broadcastToUser(ownerId, { type: "ticket_status", ticketId, status: "review", queueStatus: "none" });
+    broadcastToUser(ownerId, { type: "ticket_status", ticketId, status: "review", queueStatus: "none", stageId: reviewStageId });
   } else {
     await markTicketFailed(ticketId, "Implementation did not complete", ownerId);
     broadcastToUser(ownerId, { type: "ticket_status", ticketId, status: "failed", queueStatus: "none" });
@@ -657,7 +692,17 @@ async function executeTicketChat(
     .where(eq(profiles.userId, ownerId))
     .limit(1);
 
-  const cliApiKey = profile?.cliApiKey ?? "";
+  // Auto-generate CLI API key if missing (required for callback auth)
+  // Disconnect wipes cliApiKey, so re-generate on next chat too
+  let cliApiKey = profile?.cliApiKey ?? "";
+  if (!cliApiKey) {
+    cliApiKey = `lfg_cli_${crypto.randomUUID().replace(/-/g, "")}`;
+    await db
+      .insert(profiles)
+      .values({ userId: ownerId, cliApiKey })
+      .onConflictDoUpdate({ target: profiles.userId, set: { cliApiKey, updatedAt: new Date() } });
+    console.log(`[ticket-executor] Auto-generated CLI API key for chat user ${ownerId}`);
+  }
 
   const sandbox = await findExistingSandbox(ticketId);
   if (!sandbox?.magsWorkspaceId) {
@@ -704,6 +749,19 @@ async function executeTicketChat(
     LFG_TICKET_ID: ticket.id,
     LFG_PROJECT_ID: project!.id,
   };
+
+  // Load project environment variables and merge into envVars
+  const chatEnvRows = await db
+    .select({ key: projectEnvironmentVariables.key, encryptedValue: projectEnvironmentVariables.encryptedValue })
+    .from(projectEnvironmentVariables)
+    .where(and(
+      eq(projectEnvironmentVariables.projectId, project!.id),
+      eq(projectEnvironmentVariables.hasValue, true)
+    ));
+
+  for (const row of chatEnvRows) {
+    envVars[row.key] = decrypt(row.encryptedValue);
+  }
 
   console.log(`[ticket-executor] Chat: starting CLI for ticket ${ticketId}, workspace ${workspaceId}, session=${sessionId ?? 'none'}`);
 

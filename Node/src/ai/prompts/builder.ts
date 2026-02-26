@@ -35,10 +35,11 @@ export interface BuilderPromptContext {
   callbackBaseUrl: string;
   cliApiKey: string;
   tasks?: Array<{ id: string; description: string; status: string }>;
+  envVars?: Array<{ key: string; description: string }>;
 }
 
 export function buildBuilderPrompt(ctx: BuilderPromptContext): string {
-  const { ticket, project, callbackBaseUrl, cliApiKey, techStack, tasks } = ctx;
+  const { ticket, project, callbackBaseUrl, cliApiKey, techStack, tasks, envVars } = ctx;
 
   const taskList = tasks?.length
     ? tasks
@@ -128,10 +129,14 @@ Use the returned task IDs with the /tasks/bulk/ endpoint to update their status 
 
 ## ENVIRONMENT
 
-- You are running inside a cloud sandbox (Mags VM). The preview proxy routes external traffic to **port 8080**.
+- You are running inside an **Alpine Linux VM** (Mags sandbox). Use \`apk\` for packages (not apt/yum). You are root — do NOT use \`sudo\`.
+- The preview proxy routes external traffic to **port 8080**.
 - ALWAYS configure the dev server to listen on **port 8080** and bind to **0.0.0.0** (not localhost).
 - For frameworks with host allowlists (Vite, Astro, etc.), allow ALL hosts so the proxy URL works.
   Examples: Vite/Astro \`server.allowedHosts: true\`, Django \`ALLOWED_HOSTS = ['*']\`.
+
+## PROJECT ENVIRONMENT VARIABLES
+${envVars?.length ? envVars.map(v => `- ${v.key}: ${v.description || "(no description)"}`).join('\n') + '\nThese are pre-loaded in your shell. Use them directly (e.g. $DATABASE_URL). Do NOT ask the user for these.' : 'No project environment variables configured. If you need a database or external service credentials, use the request-input API to ask the user.'}
 
 ## INSTRUCTIONS
 

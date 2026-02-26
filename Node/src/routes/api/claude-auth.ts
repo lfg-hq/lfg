@@ -58,72 +58,74 @@ claudeAuthApi.post("/start", async (c) => {
   const user = c.get("user");
 
   try {
+    const t0 = Date.now();
+    const log = (msg: string) => console.log(`[claude-auth/start +${Date.now() - t0}ms] ${msg}`);
+
+    // Stop any old auth workspace and always create a fresh one
     let sandbox = await getAuthSandbox(user.id);
-    let wsName = "";
-
-    // Try to reuse existing workspace
     if (sandbox?.magsWorkspaceId) {
-      try {
-        const test = await execOnWorkspace(sandbox.magsWorkspaceId, "echo WORKSPACE_OK", { timeout: 20_000 });
-        if (test.exitCode === 0 && test.output.includes("WORKSPACE_OK")) {
-          wsName = sandbox.magsWorkspaceId;
-          await db.update(sandboxes).set({ status: "ready", updatedAt: new Date() })
-            .where(eq(sandboxes.id, sandbox.id));
-        } else {
-          await db.update(sandboxes).set({ status: "error", updatedAt: new Date() })
-            .where(eq(sandboxes.id, sandbox.id));
-        }
-      } catch {
-        await db.update(sandboxes).set({ status: "error", updatedAt: new Date() })
-          .where(eq(sandboxes.id, sandbox.id));
-      }
+      log(`stopping old workspace ${sandbox.magsWorkspaceId}...`);
+      stopWorkspace(sandbox.magsWorkspaceId).catch(() => {});
     }
 
-    // Create fresh workspace if we don't have a working one
-    if (!wsName) {
-      wsName = generateAuthWorkspaceName();
-      const { jobId } = await newWorkspace(wsName);
+    const wsName = generateAuthWorkspaceName();
+    log(`creating fresh workspace: ${wsName}...`);
+    const { jobId } = await newWorkspace(wsName);
+    log(`workspace created: jobId=${jobId}`);
 
-      // Base workspace already has Claude CLI, Node, and expect pre-installed — no setup needed.
-      if (sandbox) {
-        await db.update(sandboxes)
-          .set({ magsWorkspaceId: wsName, magsJobId: jobId, status: "ready", updatedAt: new Date() })
-          .where(eq(sandboxes.id, sandbox.id));
-      } else {
-        const rows = await db.insert(sandboxes).values({
-          userId: user.id,
-          workspaceType: "claude_auth",
-          magsWorkspaceId: wsName,
-          magsJobId: jobId,
-          status: "ready",
-        }).returning();
-        sandbox = rows[0] ?? null;
-      }
+    if (sandbox) {
+      await db.update(sandboxes)
+        .set({ magsWorkspaceId: wsName, magsJobId: jobId, status: "ready", updatedAt: new Date() })
+        .where(eq(sandboxes.id, sandbox.id));
+    } else {
+      const rows = await db.insert(sandboxes).values({
+        userId: user.id,
+        workspaceType: "claude_auth",
+        magsWorkspaceId: wsName,
+        magsJobId: jobId,
+        status: "ready",
+      }).returning();
+      sandbox = rows[0] ?? null;
     }
 
-    // Clean up any stale processes
-    await execOnWorkspace(wsName,
-      "pkill -9 claude 2>/dev/null; pkill -9 expect 2>/dev/null; rm -f /tmp/claude_*.txt /tmp/claude_*.log 2>/dev/null; echo CLEANUP_DONE",
-      { timeout: 15_000 }
-    ).catch(() => {});
-
-    // Try loading existing credentials from DB first (fast path)
+    // Try existing credentials (fast path — if user already connected before)
     const profile = await getOrCreateProfile(user.id);
     if (profile.claudeCodeCredentials) {
-      const loaded = await loadCredentialsFromDB(user.id, wsName);
-      if (loaded) {
-        const status = await checkAuthStatus(wsName);
-        if (status.authenticated) {
-          // Re-save credentials from VM — the CLI may have refreshed the access token
-          await saveCredentialsToDB(wsName, user.id);
-          return c.json({ status: "already_authenticated", message: "Claude Code is already authenticated" });
-        }
+      log("found existing credentials in DB, injecting to VM...");
+      await loadCredentialsFromDB(user.id, wsName);
+      log("credentials injected, testing claude -p...");
+
+      const testResult = await execOnWorkspace(wsName,
+        `export HOME=/root; export PATH=/root/node/current/bin:/root/.npm-global/bin:$PATH; claude -p "return hello" --max-turns 1 2>&1 | head -20`,
+        { timeout: 10_000 }
+      ).catch((e) => {
+        log(`claude -p threw: ${e}`);
+        return { output: "", exitCode: -1, stderr: String(e) };
+      });
+
+      const testOut = testResult.output.toLowerCase();
+      log(`CLI test: exit=${testResult.exitCode}, output="${testResult.output.slice(0, 200)}"`);
+
+      if (testResult.exitCode === 0 && testOut.includes("hello") && !testOut.includes("error") && !testOut.includes("expired") && !testOut.includes("401")) {
+        await saveCredentialsToDB(wsName, user.id);
+        log("CLI works! returning already_authenticated");
+        return c.json({ status: "already_authenticated", message: "Claude Code is already authenticated" });
       }
+
+      // CLI doesn't work — wipe cred files (keep .claude dir for trust/settings)
+      log("CLI test failed, wiping credential files for fresh OAuth");
+      await execOnWorkspace(wsName,
+        "rm -f /root/.claude/.credentials.json /home/claudeuser/.claude/.credentials.json 2>/dev/null; echo CLEARED",
+        { timeout: 8_000 }
+      ).catch(() => {});
+    } else {
+      log("no credentials in DB, going straight to OAuth");
     }
 
-    // Start the OAuth flow
-    const result = await startClaudeAuth(wsName);
-    console.log("[claude-auth/start] result:", result.status, result.error ?? "");
+    // Start OAuth flow — credentials are wiped, Claude will show login prompt
+    log("starting OAuth flow via startClaudeAuth...");
+    const result = await startClaudeAuth(wsName, { skipCredCheck: true });
+    log(`OAuth result: status=${result.status}, error=${result.error ?? "none"}`);
 
     if (result.status === "already_authenticated") {
       await saveCredentialsToDB(wsName, user.id);

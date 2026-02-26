@@ -620,19 +620,36 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
 
   /** Called by WS when ticket status changes (build done/failed). */
   function handleTicketStatus(msg) {
-    if (msg.ticketId !== _currentTicketId) return;
+    const ticketId = msg.ticketId;
     const qs = msg.queueStatus || '';
     const st = msg.status || '';
+    const stageId = msg.stageId || '';
+
+    // Move kanban card to the new column if stageId changed
+    if (stageId) {
+      var card = document.querySelector('.kanban-card[data-ticket-id="' + ticketId + '"]');
+      var targetCol = document.querySelector('.kanban-column-body[data-stage-id="' + stageId + '"]');
+      if (card && targetCol) {
+        card.parentNode.removeChild(card);
+        card.setAttribute('data-status', st);
+        // Remove "No tickets" placeholder in target
+        var placeholder = targetCol.querySelector('div[style*="text-align:center"]');
+        if (placeholder) placeholder.remove();
+        targetCol.appendChild(card);
+        // Update ticket counts on both source and target columns
+        document.querySelectorAll('.kanban-column').forEach(function(col) {
+          var body = col.querySelector('.kanban-column-body');
+          var count = col.querySelector('.ticket-count');
+          if (body && count) count.textContent = body.querySelectorAll('.kanban-card').length;
+        });
+      }
+    }
+
+    if (ticketId !== _currentTicketId) return;
     if (qs !== 'queued' && qs !== 'executing') {
       hideThinkingIndicator();
-      const btn = document.getElementById('drawer-build-btn');
+      var btn = document.getElementById('drawer-build-btn');
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-bolt"></i> Build Ticket'; }
-      // Refresh kanban card status badge
-      const card = document.querySelector('.kanban-card[data-ticket-id="' + _currentTicketId + '"]');
-      if (card) {
-        const badge = card.querySelector('.kanban-status');
-        if (badge) { badge.textContent = st.replace(/_/g, ' '); badge.className = 'kanban-status status-' + st; }
-      }
     }
   }
 
@@ -713,6 +730,16 @@ export function TicketsListPage({ user, project, stages, tickets }: TicketsListP
           '<span class="log-time">' + ts + '</span>' +
         '</div>' +
         '<div class="log-error-content">' + escHtml(msg) + '</div>';
+
+    } else if (type === 'question') {
+      // Question — amber/orange, action required
+      el.className += ' log-question';
+      el.innerHTML =
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">' +
+          '<span class="log-question-label"><i class="fas fa-question-circle"></i> ACTION REQUIRED</span>' +
+          '<span class="log-time">' + ts + '</span>' +
+        '</div>' +
+        '<div class="log-question-content">' + escHtml(msg) + '</div>';
 
     } else {
       // Command / system — show description, expand for details (like Django)

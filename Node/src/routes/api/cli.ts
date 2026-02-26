@@ -258,6 +258,13 @@ cliRouter.post("/request-input/", async (c) => {
     return c.json({ error: "ticket_id and question required" }, 400);
   }
 
+  // Look up ticket owner for WS broadcast
+  const [inputTicket] = await db.select({ projectId: projectTickets.projectId })
+    .from(projectTickets).where(eq(projectTickets.id, ticket_id)).limit(1);
+  const [inputProject] = await db.select({ ownerId: projects.ownerId })
+    .from(projects).where(eq(projects.id, inputTicket!.projectId)).limit(1);
+  const inputOwnerId = inputProject?.ownerId;
+
   // Emit WS event so the UI can show the question to the user
   emit({
     type: "ticket.input_requested",
@@ -266,12 +273,15 @@ cliRouter.post("/request-input/", async (c) => {
     options,
   });
 
-  // Log the request
-  await db.insert(ticketLogs).values({
+  // Log as "question" type (broadcasts via WS automatically through addLog)
+  await addLog(ticket_id, question, "question", inputOwnerId);
+
+  // Emit needs_attention for orchestrator consumption
+  emit({
+    type: "ticket.needs_attention",
     ticketId: ticket_id,
-    logType: "command",
-    command: "Waiting for user input",
-    explanation: question,
+    reason: "input_requested",
+    question,
   });
 
   // Long-poll for answer stored via the ticket-chat endpoint

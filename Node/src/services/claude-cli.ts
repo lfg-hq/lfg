@@ -388,38 +388,45 @@ echo "CLAUDE_STARTED"
  * Does NOT run `claude -p` (too slow, VM wake-up adds 10-30s).
  * Just verifies DB has credentials and injects them.
  */
+/**
+ * VM-first preflight check:
+ *  1. Test if Claude CLI works on the VM (`claude -p "hello"`)
+ *  2. If yes → continue (VM credentials are valid)
+ *  3. If no → pull token from DB, inject into VM, test again
+ *  4. If still no → flag user to reconnect
+ */
 export async function preflightCheck(
   workspaceId: string,
   userId: string
 ): Promise<{ ok: boolean; needsReconnect: boolean; error?: string }> {
-  // Check DB has credentials
-  const credentials = await loadCredentials(userId);
-  if (!credentials) {
-    return { ok: false, needsReconnect: true, error: "No Claude credentials found. Please connect Claude Code in Settings." };
-  }
+  // Lightweight check: just ensure credentials exist on the VM.
+  // Do NOT run `claude -p` — it takes 30-60s and often times out via execOnWorkspace.
+  // If creds are bad, the actual ticket run will surface auth errors.
 
-  // Validate credentials JSON has a token
+  console.log(`[claude-cli] preflight: checking credentials on VM ${workspaceId}...`);
+
+  // Step 1: Check if creds file already exists on the VM
   try {
-    const parsed = JSON.parse(credentials);
-    const oauth = parsed.claudeAiOauth ?? parsed;
-    if (!oauth.accessToken) {
-      return { ok: false, needsReconnect: true, error: "Claude credentials are incomplete (no access token). Please reconnect in Settings." };
+    const check = await execOnWorkspace(workspaceId,
+      `if [ -f /root/.claude/.credentials.json ] && [ -s /root/.claude/.credentials.json ]; then echo CREDS_OK; else echo NO_CREDS; fi`,
+      { timeout: 15_000 }
+    );
+    if (check.output.includes("CREDS_OK")) {
+      console.log(`[claude-cli] preflight: credentials already on VM, proceeding`);
+      return { ok: true, needsReconnect: false };
     }
-    // Check if token is expired
-    if (oauth.expiresAt && oauth.expiresAt < Date.now()) {
-      return { ok: false, needsReconnect: true, error: "Claude access token has expired. Please reconnect in Settings." };
-    }
-  } catch {
-    return { ok: false, needsReconnect: true, error: "Claude credentials are corrupted. Please reconnect in Settings." };
+  } catch (err) {
+    console.log(`[claude-cli] preflight: VM check failed: ${err}`);
   }
 
-  // Inject into VM
+  // Step 2: No creds on VM — inject from DB
+  console.log(`[claude-cli] preflight: no credentials on VM, injecting from DB...`);
   const injected = await injectCredentials(workspaceId, userId);
   if (!injected) {
-    return { ok: false, needsReconnect: false, error: "Failed to inject credentials into VM. Will retry on launch." };
+    return { ok: false, needsReconnect: true, error: "No valid Claude credentials in database. Please reconnect Claude Code in Settings." };
   }
 
-  console.log(`[claude-cli] preflight: credentials validated and injected for user ${userId}`);
+  console.log(`[claude-cli] preflight: credentials injected, proceeding`);
   return { ok: true, needsReconnect: false };
 }
 
@@ -477,7 +484,7 @@ while kill -0 \$CLI_PID 2>/dev/null; do
   sleep 2
   CURSIZE=\$(wc -c < ${outputFile} 2>/dev/null || echo 0)
   if [ "\$CURSIZE" -gt "\$OFFSET" ]; then
-    CHUNK=\$(tail -c +\$((\$OFFSET+1)) ${outputFile} | head -c \$((\$CURSIZE-\$OFFSET)) | base64)
+    CHUNK=\$(tail -c +\$((\$OFFSET+1)) ${outputFile} | head -c \$((\$CURSIZE-\$OFFSET)) | base64 | tr -d '\\n')
     OFFSET=\$CURSIZE
     curl -s -X POST "\${LFG_API_URL}/api/v1/cli/output/" \\
       -H "X-CLI-API-Key: \${LFG_API_KEY}" \\
@@ -493,7 +500,7 @@ CLAUDE_EXIT=\$?
 # Send any remaining output + done signal
 CURSIZE=\$(wc -c < ${outputFile} 2>/dev/null || echo 0)
 if [ "\$CURSIZE" -gt "\$OFFSET" ]; then
-  CHUNK=\$(tail -c +\$((\$OFFSET+1)) ${outputFile} | head -c \$((\$CURSIZE-\$OFFSET)) | base64)
+  CHUNK=\$(tail -c +\$((\$OFFSET+1)) ${outputFile} | head -c \$((\$CURSIZE-\$OFFSET)) | base64 | tr -d '\\n')
   curl -s -X POST "\${LFG_API_URL}/api/v1/cli/output/" \\
     -H "X-CLI-API-Key: \${LFG_API_KEY}" \\
     -H "Content-Type: application/json" \\

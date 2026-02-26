@@ -281,4 +281,115 @@ h1 {
   background-color: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.2);
   color: #ef4444;
-} 
+}
+
+/* ── Claude Code OAuth flow elements ──────────────── */
+
+.cc-copy-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.cc-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.cc-code-input {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-color, #f0f0f0);
+}
+
+.cc-code-input:focus {
+  border-color: var(--primary-color);
+}
+
+/* ── Light theme overrides ──────────────────────── */
+
+[data-theme="light"] body {
+  background-color: var(--body-bg, #f8fafc);
+  color: var(--text-color, #1e293b);
+}
+
+[data-theme="light"] h1 {
+  color: #1e293b;
+}
+
+[data-theme="light"] .integration-card {
+  background-color: #ffffff;
+  border-color: #e2e8f0;
+}
+
+[data-theme="light"] .integration-name {
+  color: #1e293b;
+}
+
+[data-theme="light"] .integration-description {
+  color: #64748b;
+}
+
+[data-theme="light"] .integration-status {
+  background-color: #f1f5f9;
+  color: #64748b;
+}
+
+[data-theme="light"] .connected-name {
+  color: #1e293b;
+}
+
+[data-theme="light"] .api-input {
+  background-color: #ffffff;
+  border-color: #d1d5db;
+  color: #1e293b;
+}
+
+[data-theme="light"] .section-divider {
+  border-top-color: #e2e8f0;
+}
+
+[data-theme="light"] .disconnect-button {
+  background-color: #e2e8f0;
+  color: #64748b;
+}
+
+[data-theme="light"] .disconnect-button:hover {
+  background-color: #ef4444;
+  color: white;
+}
+
+/* OAuth flow panel */
+[data-theme="light"] .cc-oauth-url-box {
+  background: rgba(139, 92, 246, 0.06) !important;
+  border-color: rgba(139, 92, 246, 0.2) !important;
+}
+
+[data-theme="light"] .cc-copy-btn {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  color: #475569;
+}
+
+[data-theme="light"] .cc-copy-btn:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+[data-theme="light"] .cc-code-input {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  color: #1e293b;
+}
+
+[data-theme="light"] .cc-code-input:focus {
+  border-color: var(--primary-color);
+}
+
+[data-theme="light"] #cc-oauth-url {
+  color: #7c3aed !important;
+}
+
+[data-theme="light"] #cc-code-error {
+  color: #dc2626 !important;
+}
